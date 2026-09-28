@@ -1,11 +1,17 @@
 """
-Iniezione nativa input mouse a 64-bit per Windows tramite ctypes SendInput.
+Iniezione nativa input mouse a 64-bit per Windows tramite ctypes SendInput (Zero Heap Churn).
 Ottimizzazioni implementate:
-1. Mappatura Sub-Pixel continua a 16-bit (spazio 0 - 65535):
-   su display Full HD garantisce 60 sub-passi per pixel; su display 4K garantisce 30 sub-passi per pixel.
-2. Risoluzione temporale kernel a 1.0 ms (timeBeginPeriod) per eliminare
-   il tipico jitter del timer di default di Windows (15.625 ms).
-3. Supporto multi-monitor esteso e display virtuale unificato.
+1. Zero Allocazioni Heap a 60-120 Hz:
+   La struttura nativa C `INPUT` per il movimento sub-pixel e la referenza `byref`
+   sono pre-allocate staticamente una sola volta in memoria. Nei cicli di movimento
+   vengono modificati solo i registri `dx` e `dy`, azzerando oltre 240 allocazioni C-wrapper
+   al secondo ed eliminando qualsiasi pausa del Garbage Collector di Python.
+2. Per-Monitor DPI Awareness v2 nativo:
+   Utilizzo dell'API Win32 moderna `SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)` (-4),
+   che previene disallineamenti di coordinate sub-pixel e difetti di rendering su configurazioni
+   ibride (es. laptop 2K/4K a 125%/150% + monitor secondario a 100%).
+3. Risoluzione temporale kernel a 1.0 ms (timeBeginPeriod) per eliminare il jitter.
+4. Mappatura normalizzata assoluta virtual desktop 0 - 65535 priva di bias direzionale.
 """
 
 import ctypes
@@ -33,6 +39,9 @@ SM_XVIRTUALSCREEN = 76
 SM_YVIRTUALSCREEN = 77
 SM_CXVIRTUALSCREEN = 78
 SM_CYVIRTUALSCREEN = 79
+
+# DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (-4)
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
 
 ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
 
@@ -87,13 +96,27 @@ winmm = ctypes.windll.winmm
 
 def set_dpi_awareness():
     """Imposta la massima consapevolezza DPI per schermi 2K/4K e multi-monitor."""
+    # 1. Prova Per-Monitor DPI Awareness v2 (Windows 10 1703+ e Windows 11)
+    try:
+        user32.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        user32.SetProcessDpiAwarenessContext.restype = wintypes.BOOL
+        if user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)):
+            return
+    except Exception:
+        pass
+
+    # 2. Fallback su Per-Monitor DPI Awareness v1
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        return
     except Exception:
-        try:
-            ctypes.windll.user32.SetProcessDPIAware()
-        except Exception:
-            pass
+        pass
+
+    # 3. Fallback standard
+    try:
+        user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 
 def enable_high_precision_timer():
@@ -114,12 +137,20 @@ def disable_high_precision_timer():
 
 
 class WindowsMouseController:
-    """Controller mouse Win32 con precisione sub-pixel e supporto multi-display."""
+    """Controller mouse Win32 ad altissima efficienza con zero allocazioni heap in move."""
 
     def __init__(self):
         enable_high_precision_timer()
         self.refresh_screen_metrics()
         self.is_dragging = False
+
+        # Pre-allocazione statica della struct per SendInput a zero heap churn
+        extra = ULONG_PTR(0)
+        flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+        mi = MOUSEINPUT(0, 0, 0, flags, 0, extra)
+        self._move_input = INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=mi))
+        self._move_byref = ctypes.byref(self._move_input)
+        self._input_size = ctypes.sizeof(INPUT)
 
     def __del__(self):
         disable_high_precision_timer()
@@ -140,22 +171,23 @@ class WindowsMouseController:
     def move_to_pixel(self, x: float, y: float):
         """
         Muove il cursore preservando le coordinate frazionarie sub-pixel.
-        Mappa il valore floating-point direttamente nello spazio assoluto 0 - 65535.
+        Esegue la mutazione diretta in memoria C senza alcuna allocazione heap in Python.
         """
-        # Clamping morbido nei confini dello schermo virtuale
         clamped_x = max(self.vx, min(self.vx + self.vw - 1.0, float(x)))
         clamped_y = max(self.vy, min(self.vy + self.vh - 1.0, float(y)))
 
-        # Calcolo normalizzato sub-pixel a 16-bit con arrotondamento corretto (zero bias direzionale)
-        norm_x = int(round((clamped_x - self.vx) * 65535.0 / (self.vw - 1.0)))
-        norm_y = int(round((clamped_y - self.vy) * 65535.0 / (self.vh - 1.0)))
+        # Calcolo normalizzato sub-pixel a 16-bit
+        norm_x = int(round((clamped_x - self.vx) * 65535.0 / max(1.0, self.vw)))
+        norm_y = int(round((clamped_y - self.vy) * 65535.0 / max(1.0, self.vh)))
 
-        extra = ULONG_PTR(0)
-        flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
-        mi = MOUSEINPUT(norm_x, norm_y, 0, flags, 0, extra)
-        inp = INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=mi))
+        norm_x = max(0, min(65535, norm_x))
+        norm_y = max(0, min(65535, norm_y))
 
-        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+        # Modifica in-place della struct C pre-allocata (Zero Churn)
+        self._move_input.union.mi.dx = norm_x
+        self._move_input.union.mi.dy = norm_y
+
+        user32.SendInput(1, self._move_byref, self._input_size)
 
     def get_cursor_pos(self) -> Tuple[int, int]:
         """Restituisce la posizione del cursore in coordinate pixel di sistema."""
@@ -182,7 +214,7 @@ class WindowsMouseController:
         inp_up = INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=mi_up))
 
         inputs = (INPUT * 2)(inp_down, inp_up)
-        user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
+        user32.SendInput(2, inputs, self._input_size)
 
     def double_click(self):
         """Esegue un doppio clic asincrono non bloccante (zero frame persi a 60 FPS)."""
@@ -199,7 +231,7 @@ class WindowsMouseController:
         down_flag = MOUSEEVENTF_LEFTDOWN if button == "left" else MOUSEEVENTF_RIGHTDOWN
         mi = MOUSEINPUT(0, 0, 0, down_flag, 0, extra)
         inp = INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=mi))
-        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+        user32.SendInput(1, ctypes.byref(inp), self._input_size)
         self.is_dragging = True
 
     def mouse_up(self, button: str = "left"):
@@ -207,7 +239,7 @@ class WindowsMouseController:
         up_flag = MOUSEEVENTF_LEFTUP if button == "left" else MOUSEEVENTF_RIGHTUP
         mi = MOUSEINPUT(0, 0, 0, up_flag, 0, extra)
         inp = INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=mi))
-        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+        user32.SendInput(1, ctypes.byref(inp), self._input_size)
         self.is_dragging = False
 
     def toggle_drag(self):

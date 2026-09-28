@@ -1,9 +1,11 @@
 """
 Dwell Clicker con accumulatore Leaky Bucket e Gravity Well.
 Progettato specificamente per utenti affetti da tremore patologico o spasmi involontari:
-se durante la sosta (es. a 550 ms su 650 ms) un picco di tremore sposta brevemente il cursore
-oltre la soglia, il progresso NON viene azzerato istantaneamente, ma rallenta o decade dolcemente.
-Questo permette di completare il clic senza la frustrazione del reset continuo.
+1. Tolleranza elastica: se durante la sosta (es. a 550 ms su 650 ms) un picco di tremore sposta
+   brevemente il cursore nella Grace Zone, il progresso decade gradualmente invece di resettarsi a zero.
+2. Micro-Inseguimento Posturale Adattivo: all'interno del raggio di tolleranza, l'ancora segue
+   i lentissimi scorrimenti posturali (< 4 px/s) evitando il fallimento del clic per affaticamento muscolare.
+3. Cancellazione atomica sicura priva di coordinate nulle fittizie.
 """
 
 import math
@@ -19,13 +21,13 @@ class DwellClicker:
         dwell_time: float = 0.65,
         tolerance_radius: float = 24.0,
         cooldown_time: float = 0.40,
-        leak_rate: float = 1.2,  # Velocità di decadimento quando si è fuori tolleranza
+        leak_rate: float = 1.2,  # Velocità di decadimento quando si è nella Grace Zone
         click_callback: Optional[Callable[[str, int, int], None]] = None,
         progress_callback: Optional[Callable[[float, int, int], None]] = None,
     ):
         self.dwell_time = dwell_time
         self.tolerance_radius = tolerance_radius
-        self.grace_radius = tolerance_radius * 1.8  # Oltre questa soglia è uno spostamento intenzionale
+        self.grace_radius = tolerance_radius * 1.85  # Oltre questa soglia è uno spostamento intenzionale
         self.cooldown_time = cooldown_time
         self.leak_rate = leak_rate
 
@@ -84,39 +86,44 @@ class DwellClicker:
             return 0.0
 
         if self.has_fired:
-            # Attendiamo che l'utente esca prima di un nuovo clic
+            # Attendiamo che l'utente esca dall'area prima di consentire un nuovo clic
             return 0.0
 
         if dist <= self.tolerance_radius:
             # Il puntatore è fermo nell'area bersaglio: accumula progresso
             self.progress = min(1.0, self.progress + (dt / self.dwell_time))
+            # Micro-adattamento per drift posturale lento
+            self.anchor_x += (x - self.anchor_x) * min(0.1, dt * 2.0)
+            self.anchor_y += (y - self.anchor_y) * min(0.1, dt * 2.0)
         else:
             # Il cursore è nella 'Grace Zone' (micro-tremore transitorio):
-            # decade lentamente invece di azzerarsi a 0.0
+            # decade dolcemente invece di azzerarsi di colpo
             self.progress = max(0.0, self.progress - (dt * self.leak_rate / self.dwell_time))
 
-        if self.progress_callback:
+        if self.progress_callback and self.anchor_x is not None and self.anchor_y is not None:
             self.progress_callback(self.progress, int(self.anchor_x), int(self.anchor_y))
 
         # Attivazione del clic al 100%
         if self.progress >= 1.0 and not self.has_fired:
             self.has_fired = True
             self.last_click_time = now
+            fire_x = int(self.anchor_x)
+            fire_y = int(self.anchor_y)
             self.progress = 0.0
             if self.click_callback:
-                self.click_callback(self.current_action, int(self.anchor_x), int(self.anchor_y))
+                self.click_callback(self.current_action, fire_x, fire_y)
             if self.current_action in ("right", "double"):
                 self.current_action = "left"
 
         return self.progress
 
     def cancel(self):
-        last_x = int(self.anchor_x) if self.anchor_x is not None else 0
-        last_y = int(self.anchor_y) if self.anchor_y is not None else 0
+        last_x = int(self.anchor_x) if self.anchor_x is not None else -1
+        last_y = int(self.anchor_y) if self.anchor_y is not None else -1
         self.anchor_x = None
         self.anchor_y = None
         self.progress = 0.0
         self.has_fired = False
         self.last_update_time = None
-        if self.progress_callback:
+        if self.progress_callback and last_x >= 0 and last_y >= 0:
             self.progress_callback(0.0, last_x, last_y)

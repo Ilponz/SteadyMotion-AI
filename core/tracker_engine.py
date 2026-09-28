@@ -2,10 +2,12 @@
 Motore biometrico avanzato basato su Google MediaPipe Face Landmarker Tasks.
 Ottimizzazioni implementate:
 1. Modalità RunningMode.VIDEO con temporal tracking continuo (risparmio CPU del ~35%).
-2. Fusione 6-DoF Ibrida: rotazione rigida della testa (Yaw/Pitch da matrice 4x4)
-   fusa con la traslazione fine del naso (disaccoppiamento dai cedimenti posturali).
-3. Gaze Micro-Correction: offset dell'iride per micro-puntamento oculare a corto raggio.
-4. EAR & Blink Clamping reattivo a delta zero durante l'ammiccamento naturale.
+2. Fusione 6-DoF Ibrida: rotazione rigida della testa (Yaw/Pitch da matrice SO(3) 4x4)
+   fusa con la traslazione fine del naso e normalizzata sulla distanza Z.
+3. Bounding fisiologico IPD: previene l'effetto catapulta del cursore durante la rotazione
+   laterale del capo (clamping rigoroso del fattore di scala Z tra 0.65 e 1.60).
+4. Gaze Micro-Correction 2D: offset dell'iride per micro-puntamento oculare a corto raggio.
+5. EAR & Blink Clamping reattivo a delta zero durante l'ammiccamento naturale.
 """
 
 import math
@@ -41,7 +43,7 @@ class TrackerResult(NamedTuple):
 
 
 class FaceTrackerEngine:
-    """Motore biometrico temporale con fusione 6-DoF e tracciamento iride."""
+    """Motore biometrico temporale con fusione 6-DoF, bounding IPD e tracciamento iride."""
 
     NOSE_TIP = 1
     SELLION = 168
@@ -71,12 +73,13 @@ class FaceTrackerEngine:
         self.neutral_pitch: float = 0.0
         self.neutral_nose_x: float = 0.5
         self.neutral_nose_y: float = 0.5
+        self.neutral_ipd: float = 0.18
         self.is_calibrated: bool = False
 
-        # Pesi di fusione (60% rotazione angolare rigida, 40% traslazione fine)
+        # Pesi di fusione (65% rotazione angolare rigida, 35% traslazione fine)
         self.w_rot: float = 0.65
         self.w_trans: float = 0.35
-        # Range angolare nominale di escursione (±15 gradi)
+        # Range angolare nominale di escursione (±18 gradi yaw, ±14 gradi pitch)
         self.fov_yaw: float = 18.0
         self.fov_pitch: float = 14.0
 
@@ -85,7 +88,6 @@ class FaceTrackerEngine:
 
         # Buffer RGB pre-allocato (Zero-Copy & Zero Heap Churn)
         self._rgb_buffer: Optional[np.ndarray] = None
-        self.neutral_ipd: float = 0.18
 
     def calibrate_center(self, yaw: float, pitch: float, nose_x: float, nose_y: float, ipd: float = 0.18):
         """Imposta l'assetto neutrale di riposo del paziente come zero del desktop."""
@@ -97,7 +99,7 @@ class FaceTrackerEngine:
         self.is_calibrated = True
 
     def _extract_euler_angles(self, matrix_4x4: np.ndarray) -> Tuple[float, float, float]:
-        """Decomposizione della matrice SO(3) nei tre angoli cardinali di rotazione."""
+        """Decomposizione della matrice SO(3) nei tre angoli cardinali con protezione singolarità."""
         r = matrix_4x4[:3, :3]
         sy = math.sqrt(r[0, 0] * r[0, 0] + r[1, 0] * r[1, 0])
         singular = sy < 1e-6
@@ -150,11 +152,14 @@ class FaceTrackerEngine:
 
         landmarks = result.face_landmarks[0]
 
-        # 1. Posa Cranica 3D Rigida
+        # 1. Posa Cranica 3D Rigida con protezione di formato matrice
         yaw, pitch, roll = 0.0, 0.0, 0.0
         if result.facial_transformation_matrixes and len(result.facial_transformation_matrixes) > 0:
-            mat = np.array(result.facial_transformation_matrixes[0])
-            yaw, pitch, roll = self._extract_euler_angles(mat)
+            try:
+                mat = np.array(result.facial_transformation_matrixes[0], dtype=np.float64).reshape((4, 4))
+                yaw, pitch, roll = self._extract_euler_angles(mat)
+            except Exception:
+                pass
 
         # 2. Punto Anatomico Nasale e Distanza Inter-Oculare (IPD)
         nose = landmarks[self.NOSE_TIP]
@@ -166,8 +171,9 @@ class FaceTrackerEngine:
         if not self.is_calibrated:
             self.calibrate_center(yaw, pitch, nose_x, nose_y, current_ipd)
 
-        # Fattore di scala per rendere la traslazione invariante rispetto alla distanza dalla webcam
-        ipd_scale = self.neutral_ipd / max(0.05, current_ipd)
+        # Bounding Fisiologico IPD: impedisce l'effetto fionda/catapulta quando il capo ruota lateralmente
+        raw_ipd_scale = self.neutral_ipd / max(0.04, current_ipd)
+        ipd_scale = max(0.65, min(1.60, raw_ipd_scale))
 
         # 3. Blendshapes FACS per Clamping e Comandi
         blend_dict: Dict[str, float] = {}
@@ -194,7 +200,7 @@ class FaceTrackerEngine:
             iris_dx = (l_iris.x - (l_in.x + l_out.x) * 0.5) / w_eye
             iris_dy = (l_iris.y - (l_in.y + l_out.y) * 0.5) / max(0.01, w_eye * 0.6)
 
-        # 5. FUSIONE IBRIDA 6-DoF Normalizzata (Rotazione Angolare Rigida + Traslazione Invariante Z)
+        # 5. FUSIONE IBRIDA 6-DoF Normalizzata (Rotazione Angolare Rigida + Traslazione Fine Invariante Z)
         d_yaw = (yaw - self.neutral_yaw) / self.fov_yaw
         d_pitch = (pitch - self.neutral_pitch) / self.fov_pitch
 
