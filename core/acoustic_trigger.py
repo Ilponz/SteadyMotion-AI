@@ -44,6 +44,16 @@ class AcousticTrigger:
             return False
 
         try:
+            # Query del sample rate nativo del dispositivo per massima compatibilità hardware
+            try:
+                device_info = sd.query_devices(kind="input")
+                if device_info and "default_samplerate" in device_info:
+                    default_sr = int(device_info["default_samplerate"])
+                    if default_sr > 0:
+                        self.sample_rate = default_sr
+            except Exception:
+                pass
+
             self.is_running = True
             self.stream = sd.InputStream(
                 samplerate=self.sample_rate,
@@ -59,15 +69,21 @@ class AcousticTrigger:
             return False
 
     def _audio_callback(self, indata, frames, time_info, status):
-        if not self.is_running:
+        if not self.is_running or indata.shape[0] == 0:
             return
 
-        # Calcolo dell'energia RMS
-        rms = float(np.sqrt(np.mean(indata**2)))
-        self.current_volume = rms
+        signal = indata[:, 0]
+        # Pre-enfasi: filtro passa-alto differenziale del primo ordine per sopprimere ronzii e voce (<1000 Hz)
+        hp_signal = np.diff(signal, prepend=signal[0])
+        hp_rms = float(np.sqrt(np.mean(hp_signal**2)))
+        self.current_volume = hp_rms
+
+        # Zero-Crossing Rate (ZCR) per identificare transitori impulsivi tipici di pop e puff
+        zcr = float(np.mean(np.abs(np.diff(np.sign(signal))))) / 2.0
 
         now = time.perf_counter()
-        if rms > self.threshold and (now - self.last_trigger_time > self.debounce_time):
+        # Rileva solo se l'energia sulle alte frequenze supera la soglia e ha ZCR sufficiente
+        if hp_rms > self.threshold and zcr > 0.08 and (now - self.last_trigger_time > self.debounce_time):
             self.last_trigger_time = now
             if self.callback:
                 self.callback()

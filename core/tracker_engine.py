@@ -83,12 +83,17 @@ class FaceTrackerEngine:
         # Monotonic timestamp tracker
         self._last_timestamp_ms: int = -1
 
-    def calibrate_center(self, yaw: float, pitch: float, nose_x: float, nose_y: float):
+        # Buffer RGB pre-allocato (Zero-Copy & Zero Heap Churn)
+        self._rgb_buffer: Optional[np.ndarray] = None
+        self.neutral_ipd: float = 0.18
+
+    def calibrate_center(self, yaw: float, pitch: float, nose_x: float, nose_y: float, ipd: float = 0.18):
         """Imposta l'assetto neutrale di riposo del paziente come zero del desktop."""
         self.neutral_yaw = yaw
         self.neutral_pitch = pitch
         self.neutral_nose_x = nose_x
         self.neutral_nose_y = nose_y
+        self.neutral_ipd = max(0.05, ipd)
         self.is_calibrated = True
 
     def _extract_euler_angles(self, matrix_4x4: np.ndarray) -> Tuple[float, float, float]:
@@ -119,8 +124,10 @@ class FaceTrackerEngine:
             timestamp_ms = self._last_timestamp_ms + 1
         self._last_timestamp_ms = timestamp_ms
 
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+        if self._rgb_buffer is None or self._rgb_buffer.shape != frame_bgr.shape:
+            self._rgb_buffer = np.empty_like(frame_bgr)
+        cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB, dst=self._rgb_buffer)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=self._rgb_buffer)
 
         result = self.detector.detect_for_video(mp_image, timestamp_ms)
 
@@ -149,12 +156,18 @@ class FaceTrackerEngine:
             mat = np.array(result.facial_transformation_matrixes[0])
             yaw, pitch, roll = self._extract_euler_angles(mat)
 
-        # 2. Punto Anatomico Nasale
+        # 2. Punto Anatomico Nasale e Distanza Inter-Oculare (IPD)
         nose = landmarks[self.NOSE_TIP]
         nose_x, nose_y = nose.x, nose.y
+        l_outer = landmarks[self.LEFT_EYE_OUTER]
+        r_outer = landmarks[self.RIGHT_EYE_OUTER]
+        current_ipd = math.hypot(l_outer.x - r_outer.x, l_outer.y - r_outer.y)
 
         if not self.is_calibrated:
-            self.calibrate_center(yaw, pitch, nose_x, nose_y)
+            self.calibrate_center(yaw, pitch, nose_x, nose_y, current_ipd)
+
+        # Fattore di scala per rendere la traslazione invariante rispetto alla distanza dalla webcam
+        ipd_scale = self.neutral_ipd / max(0.05, current_ipd)
 
         # 3. Blendshapes FACS per Clamping e Comandi
         blend_dict: Dict[str, float] = {}
@@ -171,7 +184,7 @@ class FaceTrackerEngine:
         smile = max(blend_dict.get("mouthSmileLeft", 0.0), blend_dict.get("mouthSmileRight", 0.0))
         brow_down = max(blend_dict.get("browDownLeft", 0.0), blend_dict.get("browDownRight", 0.0))
 
-        # 4. Gaze Micro-Correction via Iride
+        # 4. Gaze Micro-Correction via Iride (X e Y)
         iris_dx, iris_dy = 0.0, 0.0
         if len(landmarks) > self.RIGHT_IRIS:
             l_iris = landmarks[self.LEFT_IRIS]
@@ -179,17 +192,18 @@ class FaceTrackerEngine:
             l_out = landmarks[self.LEFT_EYE_OUTER]
             w_eye = abs(l_in.x - l_out.x) + 1e-6
             iris_dx = (l_iris.x - (l_in.x + l_out.x) * 0.5) / w_eye
+            iris_dy = (l_iris.y - (l_in.y + l_out.y) * 0.5) / max(0.01, w_eye * 0.6)
 
-        # 5. FUSIONE IBRIDA 6-DoF (Rotazione Angolare Rigida + Traslazione Nasale)
+        # 5. FUSIONE IBRIDA 6-DoF Normalizzata (Rotazione Angolare Rigida + Traslazione Invariante Z)
         d_yaw = (yaw - self.neutral_yaw) / self.fov_yaw
         d_pitch = (pitch - self.neutral_pitch) / self.fov_pitch
 
-        d_trans_x = (nose_x - self.neutral_nose_x) * 3.5
-        d_trans_y = (nose_y - self.neutral_nose_y) * 3.5
+        d_trans_x = (nose_x - self.neutral_nose_x) * 3.5 * ipd_scale
+        d_trans_y = (nose_y - self.neutral_nose_y) * 3.5 * ipd_scale
 
-        # Fusione pesata (inverte asse Y della rotazione se necessario per coordinate schermo)
+        # Fusione pesata (inverte asse Y della rotazione per coordinate schermo)
         fused_dx = self.w_rot * d_yaw + self.w_trans * d_trans_x + (iris_dx * 0.05)
-        fused_dy = -self.w_rot * d_pitch + self.w_trans * d_trans_y
+        fused_dy = -self.w_rot * d_pitch + self.w_trans * d_trans_y + (iris_dy * 0.05)
 
         cursor_x = 0.5 + fused_dx
         cursor_y = 0.5 + fused_dy

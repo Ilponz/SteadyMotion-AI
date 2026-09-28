@@ -12,9 +12,10 @@ Orchestra i 6 micro-argomenti:
 import ctypes
 import os
 import sys
+import threading
 import time
 import tkinter as tk
-from typing import Any
+from typing import Any, Optional
 
 from core.acoustic_trigger import AcousticTrigger
 from core.camera_worker import CameraWorker
@@ -95,9 +96,19 @@ class SteadyMotionApp:
         # Chiusura pulita
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        # Stato telemetria
-        self.last_loop_time = time.perf_counter()
-        self.loop_fps = 0.0
+        # Thread di elaborazione real-time indipendente dalla GUI
+        self.is_running = True
+        self.tracking_thread: Optional[threading.Thread] = None
+
+        # Telemetria e stato HUD thread-safe
+        self.telemetry_lock = threading.Lock()
+        self.shared_fps: float = 0.0
+        self.shared_face_detected: bool = False
+        self.shared_is_blinking: bool = False
+        self.shared_hud_progress: float = 0.0
+        self.shared_hud_x: int = 0
+        self.shared_hud_y: int = 0
+        self.shared_hud_dirty: bool = False
 
         # Stato tasti globali
         self.prev_f12 = False
@@ -136,9 +147,12 @@ class SteadyMotionApp:
 
     def _on_dwell_progress(self, progress: float, x: int, y: int):
         if self.is_paused:
-            self.hud.hide()
             return
-        self.hud.show_progress(progress, x, y)
+        with self.telemetry_lock:
+            self.shared_hud_progress = progress
+            self.shared_hud_x = x
+            self.shared_hud_y = y
+            self.shared_hud_dirty = True
 
     def _on_acoustic_click(self):
         """Genera un clic immediato all'impulso acustico."""
@@ -156,6 +170,7 @@ class SteadyMotionApp:
                     res.pitch + self.tracker.neutral_pitch,
                     res.cursor_raw_x,
                     res.cursor_raw_y,
+                    self.tracker.neutral_ipd,
                 )
         self.dsp_filter.reset()
         self.dwell_clicker.cancel()
@@ -180,68 +195,100 @@ class SteadyMotionApp:
             self.toggle_pause()
         self.prev_f9 = f9_pressed
 
-    def run_loop(self):
-        """Ciclo di elaborazione ad altissima fluidità (60 - 100 FPS effettivi)."""
-        now = time.perf_counter()
-        dt = now - self.last_loop_time
-        if dt > 0:
-            self.loop_fps = 0.9 * self.loop_fps + 0.1 * (1.0 / dt)
-        self.last_loop_time = now
+    def _core_tracking_loop(self):
+        """Loop di elaborazione dedicato ad alta frequenza (60-120 FPS), disaccoppiato da Tkinter."""
+        last_loop_time = time.perf_counter()
+        loop_fps = 0.0
 
-        # Controllo tasti scorciatoia ovunque su Windows
-        self._check_global_hotkeys()
+        while self.is_running:
+            t_start = time.perf_counter()
+            dt = t_start - last_loop_time
+            if dt > 0:
+                loop_fps = 0.9 * loop_fps + 0.1 * (1.0 / dt)
+            last_loop_time = t_start
 
-        # Lettura zero-copy dell'ultimo frame
-        ret, frame, timestamp, _ = self.camera.get_latest_frame()
+            # Controllo tasti scorciatoia ovunque su Windows (F12, F9)
+            self._check_global_hotkeys()
 
-        face_detected = False
-        is_blinking = False
+            face_detected = False
+            is_blinking = False
 
-        if ret and frame is not None and not self.is_paused:
-            # Inferenza in modalità VIDEO con timestamp monotonico
-            res = self.tracker.process_frame(frame, timestamp_sec=now)
-            face_detected = res.face_detected
-            is_blinking = res.is_blinking
+            if not self.is_paused:
+                ret, frame, timestamp, _ = self.camera.get_latest_frame()
+                if ret and frame is not None:
+                    # Inferenza in modalità VIDEO con timestamp monotonico
+                    res = self.tracker.process_frame(frame, timestamp_sec=t_start)
+                    face_detected = res.face_detected
+                    is_blinking = res.is_blinking
 
-            if face_detected:
-                if is_blinking:
-                    # EAR Clamping: cursore congelato durante l'ammiccamento naturale
-                    pass
-                else:
-                    # Mappatura continua dello scostamento 6-DoF
-                    norm_x = 0.5 + (res.cursor_raw_x - 0.5) * self.gain
-                    norm_y = 0.5 + (res.cursor_raw_y - 0.5) * self.gain
+                    if face_detected and not is_blinking:
+                        # Mappatura continua dello scostamento 6-DoF
+                        norm_x = 0.5 + (res.cursor_raw_x - 0.5) * self.gain
+                        norm_y = 0.5 + (res.cursor_raw_y - 0.5) * self.gain
 
-                    # Limiti desktop virtuale
-                    norm_x = max(0.0, min(1.0, norm_x))
-                    norm_y = max(0.0, min(1.0, norm_y))
+                        # Limiti desktop virtuale
+                        norm_x = max(0.0, min(1.0, norm_x))
+                        norm_y = max(0.0, min(1.0, norm_y))
 
-                    # Calcolo coordinate pixel in virgola mobile (sub-pixel)
-                    target_px = self.mouse.vx + norm_x * self.mouse.vw
-                    target_py = self.mouse.vy + norm_y * self.mouse.vh
+                        # Calcolo coordinate pixel in virgola mobile (sub-pixel)
+                        target_px = self.mouse.vx + norm_x * self.mouse.vw
+                        target_py = self.mouse.vy + norm_y * self.mouse.vh
 
-                    # Filtraggio DSP One-Euro Isotropo 2D + Spline Deadzone
-                    filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, now)
+                        # Filtraggio DSP One-Euro Isotropo 2D + Spline Deadzone
+                        filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_start)
 
-                    # Iniezione nativa a 16-bit Win32 (sub-pixel continuo)
-                    self.mouse.move_to_pixel(filt_x, filt_y)
+                        # Iniezione nativa a 16-bit Win32 (sub-pixel continuo)
+                        self.mouse.move_to_pixel(filt_x, filt_y)
 
-                    # Aggiornamento Dwell Clicker (tolleranza elastica)
-                    self.dwell_clicker.update(filt_x, filt_y, now)
+                        # Aggiornamento Dwell Clicker (tolleranza elastica)
+                        self.dwell_clicker.update(filt_x, filt_y, t_start)
+
+            # Aggiornamento telemetria thread-safe
+            with self.telemetry_lock:
+                self.shared_fps = self.camera.actual_fps if self.camera.actual_fps > 0 else loop_fps
+                self.shared_face_detected = face_detected
+                self.shared_is_blinking = is_blinking
+
+            # Sleep calibrato a bassa latenza per cadenza a 60-120 FPS
+            elapsed = time.perf_counter() - t_start
+            sleep_time = max(0.002, 0.016 - elapsed)
+            time.sleep(sleep_time)
+
+    def _gui_update_loop(self):
+        """Aggiornamento fluido della GUI Tkinter e dell'HUD (30 FPS) senza rallentare il tracking."""
+        if not self.is_running:
+            return
+
+        with self.telemetry_lock:
+            fps = self.shared_fps
+            face_detected = self.shared_face_detected
+            is_blinking = self.shared_is_blinking
+            hud_dirty = self.shared_hud_dirty
+            progress = self.shared_hud_progress
+            hx = self.shared_hud_x
+            hy = self.shared_hud_y
+            self.shared_hud_dirty = False
+
+        if self.is_paused or not self.dwell_clicker.is_enabled:
+            self.hud.hide()
+        elif hud_dirty:
+            self.hud.show_progress(progress, hx, hy)
 
         # Aggiornamento telemetria su GUI
         self.panel.update_telemetry(
-            fps=self.camera.actual_fps if self.camera.actual_fps > 0 else self.loop_fps,
+            fps=fps,
             face_detected=face_detected,
             is_blinking=is_blinking,
             is_paused=self.is_paused,
         )
 
-        # Schedula il prossimo frame ad alta frequenza (10 ms)
-        self.root.after(10, self.run_loop)
+        self.root.after(33, self._gui_update_loop)
 
     def on_close(self):
         """Spegnimento pulito e rilascio delle risorse."""
+        self.is_running = False
+        if self.tracking_thread and self.tracking_thread.is_alive():
+            self.tracking_thread.join(timeout=1.0)
         disable_high_precision_timer()
         self.camera.stop()
         self.acoustic.stop()
@@ -250,7 +297,16 @@ class SteadyMotionApp:
         sys.exit(0)
 
     def start(self):
-        self.root.after(50, self.run_loop)
+        # Avvio del thread di elaborazione e controllo core
+        self.tracking_thread = threading.Thread(
+            target=self._core_tracking_loop,
+            daemon=True,
+            name="CoreTrackingWorker"
+        )
+        self.tracking_thread.start()
+
+        # Avvio del loop GUI asincrono a 30 FPS
+        self.root.after(50, self._gui_update_loop)
         self.root.mainloop()
 
 

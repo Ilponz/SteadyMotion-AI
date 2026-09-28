@@ -10,6 +10,7 @@ Ottimizzazioni implementate:
 
 import ctypes
 from ctypes import wintypes
+import threading
 import time
 from typing import Tuple
 
@@ -84,8 +85,20 @@ user32 = ctypes.windll.user32
 winmm = ctypes.windll.winmm
 
 
+def set_dpi_awareness():
+    """Imposta la massima consapevolezza DPI per schermi 2K/4K e multi-monitor."""
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+
 def enable_high_precision_timer():
-    """Imposta la risoluzione del timer di Windows a 1.0 ms (addio jitter 15.6 ms)."""
+    """Imposta la risoluzione del timer di Windows a 1.0 ms e DPI awareness."""
+    set_dpi_awareness()
     try:
         winmm.timeBeginPeriod(1)
     except Exception:
@@ -133,9 +146,9 @@ class WindowsMouseController:
         clamped_x = max(self.vx, min(self.vx + self.vw - 1.0, float(x)))
         clamped_y = max(self.vy, min(self.vy + self.vh - 1.0, float(y)))
 
-        # Calcolo normalizzato sub-pixel a 16-bit
-        norm_x = int((clamped_x - self.vx) * 65535.0 / (self.vw - 1.0))
-        norm_y = int((clamped_y - self.vy) * 65535.0 / (self.vh - 1.0))
+        # Calcolo normalizzato sub-pixel a 16-bit con arrotondamento corretto (zero bias direzionale)
+        norm_x = int(round((clamped_x - self.vx) * 65535.0 / (self.vw - 1.0)))
+        norm_y = int(round((clamped_y - self.vy) * 65535.0 / (self.vh - 1.0)))
 
         extra = ULONG_PTR(0)
         flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
@@ -172,10 +185,14 @@ class WindowsMouseController:
         user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
 
     def double_click(self):
-        """Esegue un doppio clic con timing calibrato."""
+        """Esegue un doppio clic asincrono non bloccante (zero frame persi a 60 FPS)."""
         self.click("left")
-        time.sleep(0.08)
-        self.click("left")
+
+        def _delayed_second_click():
+            time.sleep(0.08)
+            self.click("left")
+
+        threading.Thread(target=_delayed_second_click, daemon=True, name="AsyncDoubleClick").start()
 
     def mouse_down(self, button: str = "left"):
         extra = ULONG_PTR(0)

@@ -111,10 +111,12 @@ class DwellClicker:
         return self.progress
 
     def cancel(self):
+        last_x = int(self.anchor_x) if self.anchor_x is not None else 0
+        last_y = int(self.anchor_y) if self.anchor_y is not None else 0
         self.anchor_x = None
         self.anchor_y = None
         self.progress = 0.0
         self.has_fired = False
         self.last_update_time = None
         if self.progress_callback:
-            self.progress_callback(0.0, 0, 0)
+            self.progress_callback(0.0, last_x, last_y)
