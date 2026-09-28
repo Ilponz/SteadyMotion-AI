@@ -75,6 +75,8 @@ class ControlPanel:
         on_toggle_pause: Callable[[], None],
         on_calibrate_audio: Optional[Callable[[], None]] = None,
         on_toggle_demo: Optional[Callable[[bool], None]] = None,
+        on_open_calibration: Optional[Callable[[], None]] = None,
+        on_reset_rom: Optional[Callable[[], None]] = None,
     ):
         self.root = root
         self.on_param_change = on_param_change
@@ -82,6 +84,8 @@ class ControlPanel:
         self.on_toggle_pause = on_toggle_pause
         self.on_calibrate_audio = on_calibrate_audio
         self.on_toggle_demo = on_toggle_demo
+        self.on_open_calibration = on_open_calibration
+        self.on_reset_rom = on_reset_rom
 
         self.root.title("SteadyMotion AI • Assistive Control Center")
         self.root.geometry("540x860")
@@ -97,6 +101,15 @@ class ControlPanel:
         self.acoustic_enabled = tk.BooleanVar(value=False)
         self.acoustic_threshold_val = tk.DoubleVar(value=0.18)
         self.demo_mode = tk.BooleanVar(value=False)
+
+        # Calibrazione Clinica ROM Asimmetrica
+        self.is_custom_rom = False
+        self.rom_gains = {
+            "gain_x_left": 2.8,
+            "gain_x_right": 2.8,
+            "gain_y_up": 2.8,
+            "gain_y_down": 2.8,
+        }
 
         # Preferenze Tema e Personalizzazione
         self.appearance_mode_str = tk.StringVar(value="Dark")
@@ -291,6 +304,21 @@ class ControlPanel:
         btn_w_rec = ctk.CTkButton(step3, text="🎯 Memorizza Centro Neutrale (F12)", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), height=30, fg_color="#0284c7", command=self.on_recenter)
         btn_w_rec.pack(fill="x", padx=8, pady=(2, 6))
 
+        # Step 3b: Calibrazione ROM (Consigliata per mobilità ridotta)
+        step3b = ctk.CTkFrame(self.tab_wizard, corner_radius=8)
+        step3b.pack(fill="x", padx=6, pady=3)
+        ctk.CTkLabel(step3b, text="PASSO AVANZATO: Calibrazione Escursione Cervicale (5 Punti)", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=8, pady=(4, 2))
+        btn_w_rom = ctk.CTkButton(
+            step3b,
+            text="📐 Avvia Calibrazione ROM a Tutto Schermo",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            height=30,
+            fg_color="#8b5cf6",
+            hover_color="#7c3aed",
+            command=self.on_open_calibration if self.on_open_calibration else lambda: None,
+        )
+        btn_w_rom.pack(fill="x", padx=8, pady=(2, 6))
+
         # Step 4: Clic preferito
         step4 = ctk.CTkFrame(self.tab_wizard, corner_radius=8)
         step4.pack(fill="x", padx=6, pady=3)
@@ -404,6 +432,50 @@ class ControlPanel:
 
         self._create_slider_row(card_pt, "Guadagno Movimento Head", self.gain_val, 1.0, 6.0, "gain", "{:.2f}")
         self._create_slider_row(card_pt, "Deadzone Anti-Tremore (px)", self.deadzone_val, 0.5, 6.0, "deadzone", "{:.1f} px")
+
+        # Card Calibrazione Asimmetrica ROM (5 Punti)
+        card_rom = ctk.CTkFrame(self.tab_controls, corner_radius=10, fg_color=("#f1f5f9", "#1e293b"))
+        card_rom.pack(fill="x", pady=3, padx=6)
+
+        rom_header = ctk.CTkFrame(card_rom, fg_color="transparent")
+        rom_header.pack(fill="x", padx=10, pady=(6, 2))
+        ctk.CTkLabel(rom_header, text="CALIBRAZIONE CLINICA RANGE OF MOTION (ROM)", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color="#38bdf8").pack(side="left")
+
+        self.lbl_rom_status = ctk.CTkLabel(rom_header, text="Profilo: Simmetrico Standard", font=ctk.CTkFont(family="Segoe UI", size=10), text_color="#94a3b8")
+        self.lbl_rom_status.pack(side="right")
+
+        self.lbl_rom_details = ctk.CTkLabel(
+            card_rom,
+            text="Guadagni per quadrante: SX 2.80x | DX 2.80x | SU 2.80x | GIÙ 2.80x",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=("#475569", "#cbd5e1"),
+        )
+        self.lbl_rom_details.pack(anchor="w", padx=10, pady=2)
+
+        rom_btns = ctk.CTkFrame(card_rom, fg_color="transparent")
+        rom_btns.pack(fill="x", padx=10, pady=(4, 8))
+
+        btn_start_calib = ctk.CTkButton(
+            rom_btns,
+            text="📐 Calibrazione ROM (5 Punti)",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            height=30,
+            fg_color="#8b5cf6",
+            hover_color="#7c3aed",
+            command=self.on_open_calibration if self.on_open_calibration else lambda: None,
+        )
+        btn_start_calib.pack(side="left", expand=True, fill="x", padx=(0, 4))
+
+        btn_reset_rom = ctk.CTkButton(
+            rom_btns,
+            text="Ripristina Simmetrico",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            height=30,
+            fg_color="#334155",
+            hover_color="#475569",
+            command=self.on_reset_rom if self.on_reset_rom else lambda: None,
+        )
+        btn_reset_rom.pack(side="right", padx=(4, 0))
 
         card_dsp = ctk.CTkFrame(self.tab_controls, corner_radius=10)
         card_dsp.pack(fill="x", pady=3, padx=6)
@@ -743,6 +815,30 @@ class ControlPanel:
         self.lbl_mic_reading.configure(text=f"Calibrato! Nuova: {new_threshold:.2f}", text_color="#10b981")
         self.on_param_change("acoustic_threshold", new_threshold)
 
+    def update_rom_gains(self, gains: Dict[str, float], is_custom: bool = True):
+        """Aggiorna le etichette e lo stato visivo della calibrazione Range of Motion."""
+        self.is_custom_rom = is_custom
+        self.rom_gains = gains
+        sx = gains.get("gain_x_left", self.gain_val.get())
+        dx = gains.get("gain_x_right", self.gain_val.get())
+        su = gains.get("gain_y_up", self.gain_val.get())
+        giu = gains.get("gain_y_down", self.gain_val.get())
+
+        if hasattr(self, "lbl_rom_status") and hasattr(self, "lbl_rom_details"):
+            if is_custom:
+                self.lbl_rom_status.configure(text="Profilo: Matrice ROM Calibrata ✅", text_color="#10b981")
+                self.lbl_rom_details.configure(
+                    text=f"Guadagni per quadrante: SX {sx:.2f}x | DX {dx:.2f}x | SU {su:.2f}x | GIÙ {giu:.2f}x",
+                    text_color="#38bdf8",
+                )
+            else:
+                self.lbl_rom_status.configure(text="Profilo: Simmetrico Standard", text_color="#94a3b8")
+                self.lbl_rom_details.configure(
+                    text=f"Guadagni per quadrante: SX {sx:.2f}x | DX {dx:.2f}x | SU {su:.2f}x | GIÙ {giu:.2f}x",
+                    text_color=("#475569", "#cbd5e1"),
+                )
+        self._save_config()
+
     def _launch_osk(self):
         try:
             windir = os.environ.get("WINDIR", "C:\\Windows")
@@ -778,6 +874,8 @@ class ControlPanel:
             "acoustic_threshold": self.acoustic_threshold_val.get(),
             "appearance_mode": self.appearance_mode_str.get(),
             "ui_scale": self.ui_scale_str.get(),
+            "is_custom_rom": self.is_custom_rom,
+            "rom_gains": self.rom_gains,
         }
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -813,9 +911,13 @@ class ControlPanel:
             if "ui_scale" in config_data:
                 self.ui_scale_str.set(config_data["ui_scale"])
                 self._change_scaling(config_data["ui_scale"])
+            if "is_custom_rom" in config_data and "rom_gains" in config_data:
+                self.is_custom_rom = bool(config_data["is_custom_rom"])
+                self.rom_gains = config_data["rom_gains"]
+                self.update_rom_gains(self.rom_gains, is_custom=self.is_custom_rom)
 
             for k, v in config_data.items():
-                if k not in ("appearance_mode", "ui_scale"):
+                if k not in ("appearance_mode", "ui_scale", "is_custom_rom", "rom_gains"):
                     self.on_param_change(k, v)
         except Exception:
             pass

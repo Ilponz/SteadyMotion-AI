@@ -15,7 +15,7 @@ import os
 import sys
 import threading
 import time
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 import customtkinter as ctk
 
 from core.acoustic_trigger import AcousticTrigger
@@ -55,6 +55,11 @@ class SteadyMotionApp:
 
         # Parametri operativi di default (Avvio sicuro in Standby - Cursore non dirottato)
         self.gain = 2.8
+        self.gain_x_left = 2.8
+        self.gain_x_right = 2.8
+        self.gain_y_up = 2.8
+        self.gain_y_down = 2.8
+        self.is_custom_rom = False
         self.deadzone = 2.0
         self.min_cutoff = 1.1
         self.beta = 0.006
@@ -105,6 +110,8 @@ class SteadyMotionApp:
             on_toggle_pause=self.toggle_pause,
             on_calibrate_audio=self.calibrate_audio,
             on_toggle_demo=self.toggle_demo,
+            on_open_calibration=self.open_calibration_window,
+            on_reset_rom=self.reset_symmetric_gain,
         )
         self.panel.demo_mode.set(self.is_demo)
 
@@ -123,6 +130,8 @@ class SteadyMotionApp:
         self.shared_yaw: float = 0.0
         self.shared_pitch: float = 0.0
         self.shared_roll: float = 0.0
+        self.shared_raw_x: float = 0.5
+        self.shared_raw_y: float = 0.5
         self.shared_face_detected: bool = False
         self.shared_is_blinking: bool = False
         self.shared_hud_progress: float = 0.0
@@ -138,9 +147,58 @@ class SteadyMotionApp:
         """Attiva o disattiva la modalità demo di simulazione cefalica."""
         self.is_demo = enabled
 
+    def apply_asymmetric_gains(self, gains: Dict[str, float]):
+        """Applica i guadagni asimmetrici derivati dalla calibrazione ROM a 5 punti."""
+        self.gain_x_left = float(gains.get("gain_x_left", self.gain))
+        self.gain_x_right = float(gains.get("gain_x_right", self.gain))
+        self.gain_y_up = float(gains.get("gain_y_up", self.gain))
+        self.gain_y_down = float(gains.get("gain_y_down", self.gain))
+        self.is_custom_rom = True
+        self.panel.update_rom_gains(gains, is_custom=True)
+
+    def reset_symmetric_gain(self):
+        """Ripristina il guadagno uniforme simmetrico."""
+        self.is_custom_rom = False
+        self.gain_x_left = self.gain
+        self.gain_x_right = self.gain
+        self.gain_y_up = self.gain
+        self.gain_y_down = self.gain
+        self.panel.update_rom_gains({
+            "gain_x_left": self.gain,
+            "gain_x_right": self.gain,
+            "gain_y_up": self.gain,
+            "gain_y_down": self.gain,
+        }, is_custom=False)
+
+    def get_current_pose(self) -> Dict[str, Any]:
+        """Restituisce la posa e telemetria corrente per la finestra di calibrazione."""
+        with self.telemetry_lock:
+            return {
+                "face_detected": self.shared_face_detected,
+                "raw_x": self.shared_raw_x,
+                "raw_y": self.shared_raw_y,
+                "yaw": self.shared_yaw,
+                "pitch": self.shared_pitch,
+                "roll": self.shared_roll,
+            }
+
+    def open_calibration_window(self):
+        """Apre la finestra modale a schermo intero per la calibrazione a 5 punti."""
+        from gui.calibration_window import CalibrationWindow
+        CalibrationWindow(
+            parent=self.root,
+            pose_provider=self.get_current_pose,
+            on_calibration_complete=lambda gains, stats: self.apply_asymmetric_gains(gains),
+        )
+
     def _on_param_change(self, param_name: str, value: Any):
         if param_name == "gain":
             self.gain = float(value)
+            if not self.is_custom_rom:
+                self.gain_x_left = self.gain
+                self.gain_x_right = self.gain
+                self.gain_y_up = self.gain
+                self.gain_y_down = self.gain
         elif param_name == "deadzone":
             self.deadzone = float(value)
             self.dsp_filter.update_params(self.min_cutoff, self.beta, self.deadzone)
@@ -247,17 +305,22 @@ class SteadyMotionApp:
                 face_detected = True
                 is_blinking = False
 
-                if not self.is_paused:
-                    sim_t = t_now * 0.7
-                    # Simulazione traiettoria cefalica + micro-tremore a 5 Hz
-                    raw_x = 0.5 + 0.14 * math.sin(sim_t) + 0.002 * math.sin(t_now * 31.4)
-                    raw_y = 0.5 + 0.10 * math.cos(sim_t * 0.8) + 0.002 * math.cos(t_now * 31.4)
-                    yaw = 7.0 * math.sin(sim_t)
-                    pitch = 4.0 * math.cos(sim_t * 0.8)
-                    roll = 2.0 * math.sin(sim_t * 0.5)
+                sim_t = t_now * 0.7
+                # Simulazione traiettoria cefalica + micro-tremore a 5 Hz
+                raw_x = 0.5 + 0.14 * math.sin(sim_t) + 0.002 * math.sin(t_now * 31.4)
+                raw_y = 0.5 + 0.10 * math.cos(sim_t * 0.8) + 0.002 * math.cos(t_now * 31.4)
+                yaw = 7.0 * math.sin(sim_t)
+                pitch = 4.0 * math.cos(sim_t * 0.8)
+                roll = 2.0 * math.sin(sim_t * 0.5)
 
-                    norm_x = max(0.0, min(1.0, 0.5 + (raw_x - 0.5) * self.gain))
-                    norm_y = max(0.0, min(1.0, 0.5 + (raw_y - 0.5) * self.gain))
+                if not self.is_paused:
+                    dx = raw_x - 0.5
+                    dy = raw_y - 0.5
+                    gx = self.gain_x_left if dx < 0.0 else self.gain_x_right
+                    gy = self.gain_y_up if dy < 0.0 else self.gain_y_down
+
+                    norm_x = max(0.0, min(1.0, 0.5 + dx * gx))
+                    norm_y = max(0.0, min(1.0, 0.5 + dy * gy))
 
                     target_px = self.mouse.vx + norm_x * self.mouse.vw
                     target_py = self.mouse.vy + norm_y * self.mouse.vh
@@ -273,6 +336,8 @@ class SteadyMotionApp:
                     self.shared_yaw = yaw
                     self.shared_pitch = pitch
                     self.shared_roll = roll
+                    self.shared_raw_x = raw_x
+                    self.shared_raw_y = raw_y
 
                 time.sleep(0.016)
                 continue
@@ -285,6 +350,7 @@ class SteadyMotionApp:
                 loop_fps = 0.9 * loop_fps + 0.1 * (1.0 / dt)
             last_loop_time = t_now
 
+            raw_x, raw_y = 0.5, 0.5
             if ret and frame is not None:
                 res = self.tracker.process_frame(frame, timestamp_sec=t_now)
                 face_detected = res.face_detected
@@ -292,14 +358,18 @@ class SteadyMotionApp:
                 yaw = res.yaw
                 pitch = res.pitch
                 roll = res.roll
+                raw_x = res.cursor_raw_x
+                raw_y = res.cursor_raw_y
 
                 # Iniezione mouse e Clic a sosta eseguiti SOLO se armato (non in pausa)
                 if face_detected and not is_blinking and not self.is_paused:
-                    norm_x = 0.5 + (res.cursor_raw_x - 0.5) * self.gain
-                    norm_y = 0.5 + (res.cursor_raw_y - 0.5) * self.gain
+                    dx = raw_x - 0.5
+                    dy = raw_y - 0.5
+                    gx = self.gain_x_left if dx < 0.0 else self.gain_x_right
+                    gy = self.gain_y_up if dy < 0.0 else self.gain_y_down
 
-                    norm_x = max(0.0, min(1.0, norm_x))
-                    norm_y = max(0.0, min(1.0, norm_y))
+                    norm_x = max(0.0, min(1.0, 0.5 + dx * gx))
+                    norm_y = max(0.0, min(1.0, 0.5 + dy * gy))
 
                     target_px = self.mouse.vx + norm_x * self.mouse.vw
                     target_py = self.mouse.vy + norm_y * self.mouse.vh
@@ -317,6 +387,9 @@ class SteadyMotionApp:
                 self.shared_yaw = yaw
                 self.shared_pitch = pitch
                 self.shared_roll = roll
+                if face_detected:
+                    self.shared_raw_x = raw_x
+                    self.shared_raw_y = raw_y
 
     def calibrate_audio(self):
         """Avvia la routine di stima del rumore ambientale per 2 secondi."""

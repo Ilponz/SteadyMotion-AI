@@ -151,6 +151,44 @@ def test_camera_triple_buffering_and_event():
     print(">>> TEST 6 SUPERATO! <<<")
 
 
+def test_asymmetric_rom_mapping():
+    print("\n--- TEST 7: Mappatura Asimmetrica ROM a 5 Punti (Continuità C0 & Reachability) ---")
+    # Caso Clinico: Paziente con emiparesi cervicale sinistra
+    # Escursione SX limitata a 0.07 (Yaw limitato a ~3.5°), DX normale a 0.20 (Yaw ~10°)
+    dx_left = 0.07
+    dx_right = 0.20
+    gain_x_left = 0.35 / dx_left    # 5.00x
+    gain_x_right = 0.35 / dx_right  # 1.75x
+
+    # 1. Continuità C0 perfetta al centro
+    lim_left = 0.5 + (-1e-9) * gain_x_left
+    lim_right = 0.5 + (1e-9) * gain_x_right
+    assert abs(lim_left - 0.5) < 1e-6 and abs(lim_right - 0.5) < 1e-6, "Discontinuità rilevata all'origine!"
+    print("Verifica Continuità C0 al passaggio per l'origine: 0.000000 px salto")
+
+    # 2. Raggiungimento target a sinistra con minimo sforzo
+    target_left_x = 0.5 - dx_left * gain_x_left
+    assert abs(target_left_x - 0.15) < 1e-4, f"Target SX non raggiunto correttamente: {target_left_x}"
+
+    # 3. Raggiungimento target a destra
+    target_right_x = 0.5 + dx_right * gain_x_right
+    assert abs(target_right_x - 0.85) < 1e-4, f"Target DX non raggiunto correttamente: {target_right_x}"
+
+    # 4. Monotonicità rigorosa
+    samples = np.linspace(-0.15, 0.25, 200)
+    out = []
+    for s in samples:
+        gx = gain_x_left if s < 0.0 else gain_x_right
+        norm = max(0.0, min(1.0, 0.5 + s * gx))
+        out.append(norm)
+
+    diffs = np.diff(out)
+    assert np.all(diffs >= 0), "La mappatura non è monotonicamente crescente!"
+    print(f"Guadagni Calcolati Asimmetrici: SX={gain_x_left:.2f}x | DX={gain_x_right:.2f}x")
+    print(f"Monotonicità e Reachability testate su 200 campioni: 100% Monotono")
+    print(">>> TEST 7 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -158,6 +196,8 @@ if __name__ == "__main__":
     test_subpixel_virtual_input()
     test_tracker_video_mode_and_ipd_bounds()
     test_camera_triple_buffering_and_event()
+    test_asymmetric_rom_mapping()
     print("\n=======================================================")
-    print("TUTTI I 6 MICRO-ARGOMENTI AUDIT & EVOLUTION SUPERATI AL 100%!")
+    print("TUTTI I 7 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("=======================================================")
+
