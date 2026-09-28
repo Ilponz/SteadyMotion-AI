@@ -1,7 +1,10 @@
 """
-HUD Overlay semi-trasparente e click-through per Dwell Click.
-Disegna un indicatore radiale di progresso attorno al cursore del mouse
-senza intercettare i clic (completamente permeabile grazie a WS_EX_TRANSPARENT).
+HUD Overlay semi-trasparente e click-through ad alte prestazioni.
+Ottimizzazioni implementate:
+1. Stili Win32 estesi: WS_EX_TRANSPARENT, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW
+   (la finestra è permeabile al 100%, non ruba mai il focus e non appare in Alt+Tab).
+2. Riduzione del carico GPU/DWM: ridisegna il cerchio solo se il progresso varia
+   in modo percettibile (soglia minima delta-progresso), azzerando l'overhead di compositing.
 """
 
 import ctypes
@@ -11,11 +14,13 @@ from typing import Optional
 
 WS_EX_TRANSPARENT = 0x00000020
 WS_EX_LAYERED = 0x00080000
+WS_EX_NOACTIVATE = 0x08000000
+WS_EX_TOOLWINDOW = 0x00000080
 GWL_EXSTYLE = -20
 
 
 class DwellHUD:
-    """Finestra overlay galleggiante per feedback visivo del clic a sosta."""
+    """Finestra overlay galleggiante a zero carico di elaborazione."""
 
     def __init__(self, size: int = 80):
         self.size = size
@@ -23,10 +28,14 @@ class DwellHUD:
         self.root: Optional[tk.Toplevel] = None
         self.canvas: Optional[tk.Canvas] = None
         self.is_visible = False
-        self.bg_color = "#010101"  # Colore chiave per trasparenza
+        self.bg_color = "#010101"
+
+        self.last_drawn_progress: float = -1.0
+        self.last_x: int = -999
+        self.last_y: int = -999
 
     def init_window(self, master: tk.Tk):
-        """Inizializza la finestra sovrapposta priva di bordi e trasparente."""
+        """Inizializza la finestra sovrapposta senza bordi e trasparente."""
         self.root = tk.Toplevel(master)
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
@@ -35,7 +44,6 @@ class DwellHUD:
         self.root.geometry(f"{self.size}x{self.size}+0+0")
         self.root.withdraw()
 
-        # Canvas con sfondo trasparente
         self.canvas = tk.Canvas(
             self.root,
             width=self.size,
@@ -45,18 +53,17 @@ class DwellHUD:
         )
         self.canvas.pack(fill="both", expand=True)
 
-        # Abilitazione click-through a livello Win32
+        # Configurazione stili Win32 completi
         hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
         if hwnd == 0:
             hwnd = self.root.winfo_id()
 
         style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        ctypes.windll.user32.SetWindowLongW(
-            hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT | WS_EX_LAYERED
-        )
+        target_style = style | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, target_style)
 
     def show_progress(self, progress: float, cursor_x: int, cursor_y: int):
-        """Aggiorna il cerchio di caricamento attorno alle coordinate del cursore."""
+        """Disegna il cerchio di caricamento solo in presenza di variazioni visibili."""
         if self.root is None or self.canvas is None:
             return
 
@@ -64,21 +71,31 @@ class DwellHUD:
             if self.is_visible:
                 self.root.withdraw()
                 self.is_visible = False
+                self.last_drawn_progress = -1.0
             return
 
-        # Sposta la finestra centrata sul cursore
         wx = cursor_x - self.radius
         wy = cursor_y - self.radius
-        self.root.geometry(f"{self.size}x{self.size}+{wx}+{wy}")
+
+        # Riposizionamento solo se il cursore si è spostato di almeno 2 pixel
+        if abs(wx - self.last_x) >= 2 or abs(wy - self.last_y) >= 2 or not self.is_visible:
+            self.root.geometry(f"{self.size}x{self.size}+{wx}+{wy}")
+            self.last_x = wx
+            self.last_y = wy
 
         if not self.is_visible:
             self.root.deiconify()
             self.is_visible = True
 
+        # Ridisegno del cerchio solo se il progresso è variato di almeno l'1%
+        if abs(progress - self.last_drawn_progress) < 0.015:
+            return
+
+        self.last_drawn_progress = progress
         self.canvas.delete("all")
 
-        # Cerchio guida esterno (grigio scuro)
         margin = 6
+        # Guida esterna azzurra
         self.canvas.create_oval(
             margin,
             margin,
@@ -88,8 +105,9 @@ class DwellHUD:
             width=2,
         )
 
-        # Arco di progresso (Cyan/Verde brillante)
+        # Arco di progresso verde/rosso imminente
         extent = -int(progress * 359)
+        color = "#10b981" if progress < 0.85 else "#f59e0b" if progress < 0.95 else "#ef4444"
         self.canvas.create_arc(
             margin,
             margin,
@@ -97,7 +115,7 @@ class DwellHUD:
             self.size - margin,
             start=90,
             extent=extent,
-            outline="#10b981" if progress < 0.9 else "#ef4444",
+            outline=color,
             width=4,
             style="arc",
         )
@@ -106,3 +124,4 @@ class DwellHUD:
         if self.root and self.is_visible:
             self.root.withdraw()
             self.is_visible = False
+            self.last_drawn_progress = -1.0

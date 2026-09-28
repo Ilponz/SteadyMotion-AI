@@ -1,7 +1,9 @@
 """
-Macchina a stati per Dwell Click (Clic a Sosta Temporizzata).
-Consente l'attivazione del mouse mediante stazionamento del puntatore
-all'interno di un raggio di tolleranza per un tempo predefinito (es. 600 ms).
+Dwell Clicker con accumulatore Leaky Bucket e Gravity Well.
+Progettato specificamente per utenti affetti da tremore patologico o spasmi involontari:
+se durante la sosta (es. a 550 ms su 650 ms) un picco di tremore sposta brevemente il cursore
+oltre la soglia, il progresso NON viene azzerato istantaneamente, ma rallenta o decade dolcemente.
+Questo permette di completare il clic senza la frustrazione del reset continuo.
 """
 
 import math
@@ -10,104 +12,109 @@ from typing import Callable, Optional, Tuple
 
 
 class DwellClicker:
-    """
-    Gestore del Clic a Sosta con isteresi spaziale e temporale.
-    """
+    """Motore di Clic a Sosta con tolleranza elastica al tremore (Leaky Bucket)."""
 
     def __init__(
         self,
         dwell_time: float = 0.65,
         tolerance_radius: float = 24.0,
         cooldown_time: float = 0.40,
+        leak_rate: float = 1.2,  # Velocità di decadimento quando si è fuori tolleranza
         click_callback: Optional[Callable[[str, int, int], None]] = None,
         progress_callback: Optional[Callable[[float, int, int], None]] = None,
     ):
         self.dwell_time = dwell_time
         self.tolerance_radius = tolerance_radius
+        self.grace_radius = tolerance_radius * 1.8  # Oltre questa soglia è uno spostamento intenzionale
         self.cooldown_time = cooldown_time
+        self.leak_rate = leak_rate
 
         self.click_callback = click_callback
         self.progress_callback = progress_callback
 
-        self.current_action = "left"  # "left", "right", "double", "drag"
+        self.current_action = "left"
         self.is_enabled = True
 
         self.anchor_x: Optional[float] = None
         self.anchor_y: Optional[float] = None
-        self.start_time: Optional[float] = None
+        self.progress: float = 0.0
+        self.last_update_time: Optional[float] = None
         self.last_click_time: float = 0.0
-        self.is_dwelling = False
-        self.has_fired = False
+        self.has_fired: bool = False
 
     def set_action(self, action: str):
-        """Imposta l'azione eseguita al termine del dwell ('left', 'right', 'double', 'drag')."""
         self.current_action = action
 
     def update(self, x: float, y: float, now: Optional[float] = None) -> float:
-        """
-        Aggiorna la posizione del cursore e calcola il progresso di dwell.
-        Restituisce un valore tra 0.0 (nessun dwell) e 1.0 (clic imminente/eseguito).
-        """
         if not self.is_enabled:
             return 0.0
 
         if now is None:
             now = time.perf_counter()
 
-        # Cooldown dopo l'ultimo clic
+        # Cooldown di riposo dopo un clic avvenuto
         if now - self.last_click_time < self.cooldown_time:
             return 0.0
 
-        # Se non abbiamo un'ancora attiva, inizializziamo
+        if self.last_update_time is None:
+            self.last_update_time = now
+            dt = 0.016
+        else:
+            dt = max(0.001, min(0.1, now - self.last_update_time))
+            self.last_update_time = now
+
+        # Inizializzazione prima ancora
         if self.anchor_x is None or self.anchor_y is None:
             self.anchor_x = x
             self.anchor_y = y
-            self.start_time = now
+            self.progress = 0.0
             self.has_fired = False
-            self.is_dwelling = True
             return 0.0
 
         dist = math.hypot(x - self.anchor_x, y - self.anchor_y)
 
-        if dist > self.tolerance_radius:
-            # Il cursore è uscito dalla zona di sosta: reset dell'ancora
+        if dist >= self.grace_radius:
+            # Spostamento volontario verso un'altra icona: reset totale
             self.anchor_x = x
             self.anchor_y = y
-            self.start_time = now
+            self.progress = 0.0
             self.has_fired = False
-            self.is_dwelling = True
             if self.progress_callback:
                 self.progress_callback(0.0, int(x), int(y))
             return 0.0
 
-        # Il cursore è all'interno della zona di sosta
         if self.has_fired:
-            # Ha già cliccato e non si è ancora spostato fuori
+            # Attendiamo che l'utente esca prima di un nuovo clic
             return 0.0
 
-        elapsed = now - self.start_time
-        progress = min(1.0, elapsed / self.dwell_time)
+        if dist <= self.tolerance_radius:
+            # Il puntatore è fermo nell'area bersaglio: accumula progresso
+            self.progress = min(1.0, self.progress + (dt / self.dwell_time))
+        else:
+            # Il cursore è nella 'Grace Zone' (micro-tremore transitorio):
+            # decade lentamente invece di azzerarsi a 0.0
+            self.progress = max(0.0, self.progress - (dt * self.leak_rate / self.dwell_time))
 
         if self.progress_callback:
-            self.progress_callback(progress, int(self.anchor_x), int(self.anchor_y))
+            self.progress_callback(self.progress, int(self.anchor_x), int(self.anchor_y))
 
-        if progress >= 1.0 and not self.has_fired:
+        # Attivazione del clic al 100%
+        if self.progress >= 1.0 and not self.has_fired:
             self.has_fired = True
             self.last_click_time = now
+            self.progress = 0.0
             if self.click_callback:
                 self.click_callback(self.current_action, int(self.anchor_x), int(self.anchor_y))
-            # Se era un'azione speciale monouso, resetta a "left"
             if self.current_action in ("right", "double"):
                 self.current_action = "left"
 
-        return progress
+        return self.progress
 
     def cancel(self):
-        """Annulla il conteggio attuale."""
         self.anchor_x = None
         self.anchor_y = None
-        self.start_time = None
+        self.progress = 0.0
         self.has_fired = False
-        self.is_dwelling = False
+        self.last_update_time = None
         if self.progress_callback:
             self.progress_callback(0.0, 0, 0)
