@@ -247,3 +247,32 @@ class WindowsMouseController:
             self.mouse_up("left")
         else:
             self.mouse_down("left")
+
+    def send_unicode_char(self, char: str):
+        """Invia caratteri Unicode direttamente alla finestra Windows attiva."""
+        extra = ULONG_PTR(0)
+        KEYEVENTF_KEYUP = 0x0002
+        KEYEVENTF_UNICODE = 0x0004
+        for c in char:
+            val = ord(c)
+            ki_down = KEYBDINPUT(0, val, KEYEVENTF_UNICODE, 0, extra)
+            inp_down = INPUT(type=1, union=_INPUTunion(ki=ki_down))
+
+            ki_up = KEYBDINPUT(0, val, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0, extra)
+            inp_up = INPUT(type=1, union=_INPUTunion(ki=ki_up))
+
+            inputs = (INPUT * 2)(inp_down, inp_up)
+            user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
+
+    def send_key_event(self, vk_code: int):
+        """Invia codici di tasto virtuale (es. VK_BACK, VK_RETURN, VK_SPACE)."""
+        extra = ULONG_PTR(0)
+        KEYEVENTF_KEYUP = 0x0002
+        ki_down = KEYBDINPUT(vk_code, 0, 0, 0, extra)
+        inp_down = INPUT(type=1, union=_INPUTunion(ki=ki_down))
+
+        ki_up = KEYBDINPUT(vk_code, 0, KEYEVENTF_KEYUP, 0, extra)
+        inp_up = INPUT(type=1, union=_INPUTunion(ki=ki_up))
+
+        inputs = (INPUT * 2)(inp_down, inp_up)
+        user32.SendInput(2, inputs, ctypes.sizeof(INPUT))

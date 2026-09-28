@@ -112,6 +112,7 @@ class SteadyMotionApp:
             on_toggle_demo=self.toggle_demo,
             on_open_calibration=self.open_calibration_window,
             on_reset_rom=self.reset_symmetric_gain,
+            on_open_keyboard=self.open_floating_keyboard,
         )
         self.panel.demo_mode.set(self.is_demo)
 
@@ -189,6 +190,19 @@ class SteadyMotionApp:
             parent=self.root,
             pose_provider=self.get_current_pose,
             on_calibration_complete=lambda gains, stats: self.apply_asymmetric_gains(gains),
+        )
+
+    def open_floating_keyboard(self):
+        """Apre o porta in primo piano la tastiera assistiva flottante."""
+        if hasattr(self, "_floating_kbd") and self._floating_kbd is not None and self._floating_kbd.winfo_exists():
+            self._floating_kbd.lift()
+            self._floating_kbd.focus_force()
+            return
+        from gui.floating_keyboard import FloatingKeyboardWindow
+        self._floating_kbd = FloatingKeyboardWindow(
+            parent=self.root,
+            virtual_input_controller=self.mouse,
+            on_close_callback=lambda: setattr(self, "_floating_kbd", None),
         )
 
     def _on_param_change(self, param_name: str, value: Any):

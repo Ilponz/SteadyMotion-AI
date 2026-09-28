@@ -77,6 +77,7 @@ class ControlPanel:
         on_toggle_demo: Optional[Callable[[bool], None]] = None,
         on_open_calibration: Optional[Callable[[], None]] = None,
         on_reset_rom: Optional[Callable[[], None]] = None,
+        on_open_keyboard: Optional[Callable[[], None]] = None,
     ):
         self.root = root
         self.on_param_change = on_param_change
@@ -86,6 +87,7 @@ class ControlPanel:
         self.on_toggle_demo = on_toggle_demo
         self.on_open_calibration = on_open_calibration
         self.on_reset_rom = on_reset_rom
+        self.on_open_keyboard = on_open_keyboard
 
         self.root.title("SteadyMotion AI • Assistive Control Center")
         self.root.geometry("540x860")
@@ -213,18 +215,18 @@ class ControlPanel:
         )
         self.btn_recenter.pack(side="left", expand=True, fill="x", padx=(0, 4))
 
-        self.btn_osk = ctk.CTkButton(
+        self.btn_floating_kbd = ctk.CTkButton(
             action_bar,
-            text="⌨️ Tastiera OSK",
+            text="⌨️ Tastiera Flottante",
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            command=self._launch_osk,
+            command=self.on_open_keyboard if self.on_open_keyboard else self._launch_osk,
             height=32,
-            width=110,
+            width=135,
             corner_radius=8,
-            fg_color=("#475569", "#334155"),
-            hover_color=("#334155", "#1e293b"),
+            fg_color="#8b5cf6",
+            hover_color="#7c3aed",
         )
-        self.btn_osk.pack(side="right", padx=(4, 0))
+        self.btn_floating_kbd.pack(side="right", padx=(4, 0))
 
         # 3. Tabview con Setup Wizard & Tutorial inclusi
         self.tabview = ctk.CTkTabview(self.root, corner_radius=12)
@@ -699,6 +701,17 @@ class ControlPanel:
                     command=lambda ch=c_char: self._on_aac_key(ch),
                 )
                 b.pack(side="left", expand=True, fill="x", padx=1)
+
+        btn_float_kbd = ctk.CTkButton(
+            self.tab_aac,
+            text="🪟 Apri Tastiera Flottante a Schermo (Sempre in Primo Piano)",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            height=34,
+            fg_color="#8b5cf6",
+            hover_color="#7c3aed",
+            command=self.on_open_keyboard if self.on_open_keyboard else lambda: None,
+        )
+        btn_float_kbd.pack(fill="x", padx=6, pady=(6, 2))
 
     # ---------------- TAB 7: TEMI & ACCESSIBILITÀ ----------------
     def _build_tab_settings(self):
