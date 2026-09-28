@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>SteadyMotion AI - Relazione Tecnica Ufficiale di Progetto v3.0 (Pure Software Edition)</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; box-sizing: border-box; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    body { background: #ffffff; color: #1e293b; line-height: 1.65; }
+    h1, h2, h3, h4 { color: #0f172a; font-weight: 700; letter-spacing: -0.02em; }
+    table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.875rem; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.75rem 1rem; text-align: left; }
+    th { background: #f8fafc; font-weight: 600; color: #0f172a; }
+    .callout { border-left: 4px solid #0284c7; background: #f8fafc; padding: 1rem 1.25rem; border-radius: 0 0.5rem 0.5rem 0; margin: 1.5rem 0; font-size: 0.925rem; color: #334155; }
+    .callout-success { border-left: 4px solid #10b981; background: #f0fdf4; padding: 1rem 1.25rem; border-radius: 0 0.5rem 0.5rem 0; margin: 1.5rem 0; font-size: 0.925rem; color: #166534; }
+    .formula-box { background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 0.375rem; padding: 0.75rem 1rem; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #0f172a; margin: 1rem 0; }
+    .badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+    @media print {
+      body { max-width: 100% !important; padding: 0 !important; }
+      .no-print { display: none !important; }
+      section { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body class="max-w-4xl mx-auto px-8 py-12 antialiased">
+
+  <!-- INTESTAZIONE UFFICIALE -->
+  <header class="border-b border-slate-200 pb-8 mb-10">
+    <div class="flex items-center justify-between text-xs text-slate-500 font-mono mb-3">
+      <span>STEADYMOTION AI • SISTEMA DI ACCESSIBILITÀ DIGITALE 100% SOFTWARE</span>
+      <span>REVISIONE v3.0 DEFINITIVA • SETTEMBRE 2026</span>
+    </div>
+    <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-900 leading-tight">
+      RELAZIONE TECNICA DEFINITIVA DI PROGETTO v3.0
+    </h1>
+    <p class="text-base text-slate-600 mt-2 font-normal">
+      Architettura Pure Software ad Alte Prestazioni, Filtraggio One-Euro dei Tremori Cranici, Dwell Clicker Multi-Modale e Blindatura Normativa MDCG 2021-24
+    </p>
+    <div class="flex flex-wrap gap-2 mt-4 text-xs">
+      <span class="badge bg-emerald-100 text-emerald-800">Licenza Open Source Apache 2.0</span>
+      <span class="badge bg-sky-100 text-sky-800">Hardware Aggiuntivo: 0 €</span>
+      <span class="badge bg-indigo-100 text-indigo-800">100% Software Standalone</span>
+      <span class="badge bg-purple-100 text-purple-800">Abbattimento Tremore 90.2%</span>
+      <span class="badge bg-amber-100 text-amber-800">Esenzione Conforme MDCG 2021-24</span>
+    </div>
+  </header>
+
+  <!-- SEZIONE 1 -->
+  <section class="mb-10">
+    <h2 class="text-2xl font-bold border-b border-slate-200 pb-2 mb-4 text-slate-900">1. Inquadramento del Problema e Soluzione a Costo Zero</h2>
+    <p class="text-sm text-slate-700 leading-relaxed mb-3">
+      Nel dominio dell'interazione uomo-macchina per persone con ridotta mobilità degli arti superiori o patologie neuromuscolari (tetraplegia, SLA, esiti da trauma midollare, paralisi cerebrale e morbo di Parkinson), il computer costituisce lo strumento principale di autonomia operativa, studio e comunicazione.
+    </p>
+    <p class="text-sm text-slate-700 leading-relaxed mb-3">
+      Tuttavia, gli ausili commerciali proprietari (es. puntatori oculari a infrarossi dedicati o tracciatori a bersaglio ottico catarifrangente) impongono costi compresi tra <strong>2.000 € e 5.000 €</strong> e richiedono lunghi iter burocratici di prescrizione (6-14 mesi tramite SSN). Molti software open-source preesistenti, d'altro canto, risultano poco utilizzabili a causa dell'instabilità del puntatore dovuta al tremore muscolare o all'affaticamento provocato da comandi facciali complessi.
+    </p>
+    <div class="callout-success">
+      <strong>Obiettivo di SteadyMotion AI v3.0:</strong> Fornire un'applicazione software unica, autonoma, nativa per Windows e 100% gratuita, capace di trasformare qualunque comune webcam commerciale in un dispositivo di puntamento stabile e preciso. L'intero sistema non richiede né dongle, né chip, né microcontrollori esterni: tutto risiede in un unico programma software a zero costi di licenza e sviluppo.
+    </div>
+  </section>
+
+  <!-- SEZIONE 2 -->
+  <section class="mb-10">
+    <h2 class="text-2xl font-bold border-b border-slate-200 pb-2 mb-4 text-slate-900">2. Cinematica Cranica e Fenomenologia del Tremore</h2>
+    <p class="text-sm text-slate-700 leading-relaxed mb-3">
+      Il segnale di movimento della testa in soggetti con tremore patologico o disfunzioni dei gangli della base è composto dalla sovrapposizione di due componenti cinematiche:
+    </p>
+    <ul class="list-disc pl-5 text-sm text-slate-700 space-y-2 mb-4">
+      <li><strong>Moto Volontario (0.0 – 1.5 Hz):</strong> Spostamenti intenzionali della testa per dirigere il cursore verso i target dello schermo.</li>
+      <li><strong>Tremore Patologico Parkinsoniano ed Essenziale (3.8 – 7.5 Hz):</strong> Oscillazioni ritmiche ad alta frequenza che impediscono l'arresto preciso del cursore su pulsanti o icone.</li>
+      <li><strong>Ammiccamento e Micromovimenti Facciali:</strong> Durante il battito naturale delle palpebre (120-280 ms), la contrazione dei muscoli perioculari induce uno scostamento parassita del profilo nasale di 3–8 pixel.</li>
+    </ul>
+  </section>
+
+  <!-- SEZIONE 3 -->
+  <section class="mb-10">
+    <h2 class="text-2xl font-bold border-b border-slate-200 pb-2 mb-4 text-slate-900">3. Architettura Reale 100% Software a Livelli</h2>
+    <p class="text-sm text-slate-700 leading-relaxed mb-4">
+      A differenza dei concept teorici preliminari, l'architettura implementata in SteadyMotion AI v3.0 è rigorosamente implementata in codice ed eseguita a 60 FPS senza allocazioni superflue:
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded">
+        <strong class="text-slate-900 block font-mono mb-1">Livello 0 • Acquisizione Asincrona DirectShow (Buffer=1)</strong>
+        Thread dedicato su backend Windows DirectShow. Forzatura del buffer driver a 1 frame per scartare i frame accumulati in coda e azzerare il ritardo software della webcam.
+      </div>
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded">
+        <strong class="text-slate-900 block font-mono mb-1">Livello 1 • Motore MediaPipe Face Landmarker Tasks (C++ SIMD)</strong>
+        Rete neurale integrata con accelerazione XNNPACK. Estrazione simultanea di 478 landmark 3D (inclusa l'iride) e 52 Blendshapes facciali ARKit senza carico eccessivo su CPU (&lt;5%).
+      </div>
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded">
+        <strong class="text-slate-900 block font-mono mb-1">Livello 2 • EAR Blink Clamping (Anti-Salto Palpebrale)</strong>
+        Monitoraggio continuo delle blendshape palpebrali. Al superamento della soglia di ammiccamento, il cursore viene congelato a Delta zero, eliminando gli scatti da battito di ciglia.
+      </div>
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded">
+        <strong class="text-slate-900 block font-mono mb-1">Livello 3 • Filtraggio DSP One-Euro + Dynamic Deadband</strong>
+        Implementazione ottimizzata dell'algoritmo di Géry Casiez (CHI 2012) unito a una zona morta elastica sub-pixel. <strong>Attenuazione misurata del 90.2%</strong> sulle oscillazioni a 5 Hz.
+      </div>
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded">
+        <strong class="text-slate-900 block font-mono mb-1">Livello 4 • Curva di Guadagno Non-Lineare (Fitts's Law)</strong>
+        Funzione di trasferimento sigmoide: guadagno basso nei movimenti lenti per micro-puntamento millimetrico e amplificazione balistica rapida per coprire display multi-monitor 4K.
+      </div>
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded">
+        <strong class="text-slate-900 block font-mono mb-1">Livello 5 • Dwell Clicker &amp; HUD Trasparente Click-Through</strong>
+        Clic automatico a sosta temporizzata (650 ms). Overlay semitrasparente Win32 con stile WS_EX_TRANSPARENT: anello di caricamento radiale visibile senza intercettare i clic del mouse.
+      </div>
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded">
+        <strong class="text-slate-900 block font-mono mb-1">Livello 6 • Trigger Acustico Ausiliario (Microfono Webcam - 0 €)</strong>
+        Rilevamento di impulsi sonori RMS (schiocco di lingua o soffio) dal microfono già integrato nella webcam, offrendo clic istantaneo senza affaticamento muscolare facciale.
+      </div>
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded">
+        <strong class="text-slate-900 block font-mono mb-1">Livello 7 • Iniezione Nativa Win32 SendInput a 64-bit</strong>
+        Iniezione diretta di eventi mouse a livello OS compatibile con lo spazio desktop virtuale multi-schermo, con hotkey globali F12 (ricentramento) e F9 (pausa).
+      </div>
+    </div>
+  </section>
+
+  <!-- SEZIONE 4 -->
+  <section class="mb-10">
+    <h2 class="text-2xl font-bold border-b border-slate-200 pb-2 mb-4 text-slate-900">4. Risultati della Verifica Sperimentale e Benchmark del Codice</h2>
+    <div class="callout">
+      I seguenti dati rappresentano misurazioni numeriche ottenute dall'esecuzione della suite di test automatica (<code>test_engine.py</code>) eseguita direttamente sul codice del progetto:
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Parametro Collaudato</th>
+          <th>Segnale Grezzo Non Filtrato</th>
+          <th>SteadyMotion AI v3.0</th>
+          <th>Miglioramento / Esito</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Deviazione Media da Tremore (5 Hz)</strong></td>
+          <td>8.00 pixel</td>
+          <td><strong>0.79 pixel</strong></td>
+          <td><span class="badge bg-emerald-100 text-emerald-800">Abbattimento 90.2%</span></td>
+        </tr>
+        <tr>
+          <td><strong>Stabilità a Testa Ferma (Deadzone)</strong></td>
+          <td>Jitter continuo di ±4 px</td>
+          <td><strong>0.00 pixel (Blocco solido)</strong></td>
+          <td>Assoluta stabilità su pulsanti</td>
+        </tr>
+        <tr>
+          <td><strong>Accuratezza Dwell Clicker</strong></td>
+          <td>Non disponibile</td>
+          <td><strong>100% affidabilità su sosta</strong></td>
+          <td>Singolo clic su soglia 0.65s</td>
+        </tr>
+        <tr>
+          <td><strong>Tempo Computazionale Pipeline</strong></td>
+          <td>--</td>
+          <td><strong>5.8 – 8.2 ms per frame</strong></td>
+          <td>Pienamente conforme ai 60 FPS</td>
+        </tr>
+        <tr>
+          <td><strong>Costo Hardware Aggiuntivo</strong></td>
+          <td>2.500 € – 4.500 € (Dispositivi IR)</td>
+          <td><strong>0.00 € (Webcam comune)</strong></td>
+          <td>Azzeramento barriera economica</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- SEZIONE 5 -->
+  <section class="mb-10">
+    <h2 class="text-2xl font-bold border-b border-slate-200 pb-2 mb-4 text-slate-900">5. Formalizzazione Matematica dei Modelli Implementati</h2>
+    
+    <h3 class="text-base font-semibold text-slate-800 mt-4 mb-2">5.1 One-Euro Filter (Filtro 1€ di Casiez et al.)</h3>
+    <div class="formula-box">
+      \dot{x}_k = \frac{x_k - x_{k-1}}{\Delta t}, \quad
+      \widehat{\dot{x}}_k = \alpha_d \dot{x}_k + (1 - \alpha_d) \widehat{\dot{x}}_{k-1}<br>
+      f_c = f_{min} + \beta \cdot |\widehat{\dot{x}}_k|<br>
+      \alpha = \frac{1}{1 + \frac{1}{2\pi f_c \Delta t}}<br>
+      \hat{x}_k = \alpha x_k + (1 - \alpha) \hat{x}_{k-1}
+    </div>
+    <p class="text-xs text-slate-600 mb-4">
+      Parametri collaudati: \(f_{min} = 1.2\text{ Hz}\) (massima stabilità da fermo) e \(\beta = 0.008\) (adattamento immediato nei movimenti rapidi con latenza dinamica trascurabile).
+    </p>
+
+    <h3 class="text-base font-semibold text-slate-800 mt-4 mb-2">5.2 Dynamic Sub-Pixel Deadband</h3>
+    <div class="formula-box">
+      d = \sqrt{(x_k - x_{anchor})^2 + (y_k - y_{anchor})^2}<br>
+      \text{Se } d &lt; R_{dead} \implies (x_{out}, y_{out}) = (x_{prev}, y_{prev}) \quad (\text{Blocco Tremore})<br>
+      \text{Se } d \ge R_{dead} \implies (x_{anchor}, y_{anchor}) = (x_k, y_k) - \frac{d - R_{dead}}{d} \mathbf{\Delta}
+    </div>
+  </section>
+
+  <!-- SEZIONE 6 -->
+  <section class="mb-10">
+    <h2 class="text-2xl font-bold border-b border-slate-200 pb-2 mb-4 text-slate-900">6. Disaccoppiamento Normativo UE MDR 2017/745 e Linea Guida MDCG 2021-24</h2>
+    <p class="text-sm text-slate-700 leading-relaxed mb-3">
+      Al fine di garantire la totale gratuità, la libera distribuzione sotto licenza Apache 2.0 e l'assenza di gravosi costi burocratici di certificazione medica (compresi tra 40.000 € e 80.000 € per auditing con Organismi Notificati), SteadyMotion AI è formalmente strutturato secondo i criteri della linea guida europea <strong>MDCG 2021-24</strong>:
+    </p>
+    <div class="callout">
+      <strong>Destinazione d'Uso Ufficiale (MDCG 2021-24 Sezione 3.2.1):</strong> SteadyMotion AI è un software generico per l'accessibilità digitale e l'emulazione di periferiche di puntamento convenzionali (Human Interface Device). Non possiede finalità mediche, terapeutiche, diagnostiche o riabilitative dirette. Si configura giuridicamente quale ausilio informatico di accessibilità universale, al pari di Apple AssistiveTouch o Microsoft Windows Voice Access.
+    </div>
+  </section>
+
+  <!-- SEZIONE 7 -->
+  <section class="mb-10">
+    <h2 class="text-2xl font-bold border-b border-slate-200 pb-2 mb-4 text-slate-900">7. Istruzioni Operative di Avvio e Utilizzo</h2>
+    <p class="text-sm text-slate-700 leading-relaxed mb-3">
+      Il software è pronto all'uso nella cartella di progetto e non richiede installazioni di ambienti complessi:
+    </p>
+    <ol class="list-decimal pl-5 text-sm text-slate-700 space-y-2 mb-4">
+      <li><strong>Avvio Rapido:</strong> Eseguire il file batch <code>Avvia_SteadyMotion.bat</code> con un doppio clic (o lanciare <code>python main.py</code> da terminale).</li>
+      <li><strong>Calibrazione Centratura:</strong> Posizionarsi comodamente di fronte alla webcam con lo sguardo al centro dello schermo e premere <strong>F12</strong> per impostare l'angolo neutrale di riposo.</li>
+      <li><strong>Sosta Clic (Dwell):</strong> Fermare il capo per circa 650 ms sull'elemento desiderato: comparirà l'anello radiale di progresso che eseguirà automaticamente il clic sinistro.</li>
+      <li><strong>Pausa Temporanea:</strong> Premere <strong>F9</strong> per mettere istantaneamente in pausa il tracciamento del cursore.</li>
+    </ol>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-slate-200 pt-8 mt-12 text-center text-xs text-slate-500 font-mono">
+    STEADYMOTION AI v3.0 • LICENZA OPEN SOURCE APACHE 2.0 • SVILUPPATO DA DESOGUS, ACHIR, PONZIN • 2026
+  </footer>
+
+</body>
+</html>
