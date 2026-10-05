@@ -1008,8 +1008,10 @@ class ControlPanel:
         yaw: float = 0.0,
         pitch: float = 0.0,
         roll: float = 0.0,
+        is_fatigued: bool = False,
+        fatigue_reason: str = "Nessuna",
     ):
-        """Aggiorna tutti i componenti visivi e il radar posturale."""
+        """Aggiorna tutti i componenti visivi, il radar posturale e il monitor ergonomico."""
         self.lbl_fps_footer.configure(text=f"FPS: {fps:.1f}")
 
         # Aggiornamento Banner di Sicurezza e Tasto Master
@@ -1025,11 +1027,18 @@ class ControlPanel:
             self.pill_status.configure(text="● BLINK (CLAMP)", text_color="#38bdf8")
         elif face_detected:
             self.pill_status.configure(text=f"● ATTIVO ({fps:.0f} FPS)", text_color="#10b981")
-            self.safety_banner.configure(fg_color=("#ecfdf5", "#064e3b"), border_color="#059669")
-            self.lbl_safety_status.configure(
-                text="🟢 STATO: TRACCIAMENTO ATTIVO\nIl mouse risponde al capo. Premi F9 per sospendere in qualsiasi momento.",
-                text_color=("#065f46", "#34d399"),
-            )
+            if is_fatigued:
+                self.safety_banner.configure(fg_color=("#fef3c7", "#291e0a"), border_color="#f59e0b")
+                self.lbl_safety_status.configure(
+                    text=f"⚠️ POSTURA: {fatigue_reason}\nTesta inclinata a lungo: premi F12 per ricentrare o fai una pausa.",
+                    text_color=("#b45309", "#fbbf24"),
+                )
+            else:
+                self.safety_banner.configure(fg_color=("#ecfdf5", "#064e3b"), border_color="#059669")
+                self.lbl_safety_status.configure(
+                    text="🟢 STATO: TRACCIAMENTO ATTIVO\nIl mouse risponde al capo. Premi F9 per sospendere in qualsiasi momento.",
+                    text_color=("#065f46", "#34d399"),
+                )
             self.btn_master_toggle.configure(text="⏸ SOSPENDI PAUSA (F9)", fg_color="#d97706", hover_color="#b45309")
         else:
             self.pill_status.configure(text="● VOLTO FUORI CAMPO", text_color="#ef4444")

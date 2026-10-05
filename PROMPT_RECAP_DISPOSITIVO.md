@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (10 su 10 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (12 su 12 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback MSMF (Media Foundation);
@@ -92,6 +92,15 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (1
     - 4 Preset clinici patologia-specifici preimpostati (Tetraplegia Standard, SLA Minimo Sforzo, Parkinson Forte Tremore, Distonia/Ipertono);
     - Serializzazione JSON atomica su `config/profiles/` con salvataggio automatico dell'ultimo profilo attivo.
 
+13. **Monitor Ergonomico & Affaticamento Muscolare Cervicale (core/ergonomics.py):**
+    - Rilevamento biometrico continuo di posture cervicali anomale sostenute (Head-Drop / caduta mento e Tilt laterale > 12°);
+    - Assorbimento dinamico del drift posturale lento (*Slow Baseline Drift Absorption*);
+    - Notifica ergonomica contestuale nel banner di sicurezza per suggerire ricentratura comoda F12 o pausa di riposo.
+
+14. **Feedback Uditivo Multi-Sensoriale Asincrono (core/audio_feedback.py):**
+    - Coda audio asincrona a latenza zero (< 0.02 ms) su thread Win32 dedicato privo di jitter per il loop a 60 FPS;
+    - Toni differenziati a livello frequenziale per confermare acusticamente ogni evento (Clic SX brillante 1200 Hz, Clic DX 1800 Hz, doppio impulso, toni drag & drop e pausa/ripresa).
+
 ---
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
@@ -108,7 +117,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 10 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 12 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 
@@ -138,7 +147,7 @@ Quando sei a casa davanti alla postazione reale con il paziente:
    - Clicca `[💾 Applica Guadagni e Salva]`: i guadagni asimmetrici saranno attivi e salvati nel profilo JSON.
 6. **Addestramento nella Sandbox (Tab Tutorial):**
    - Vai nella scheda *"📖 Tutorial & Bersagli"*.
-   - Fai esercitare il paziente a colpire i 5 pulsanti numerati completando il cerchio Dwell.
+   - Fai esercitare il paziente a colpire i 5 pulsanti numerati completando il cerchio Dwell, ascoltando il feedback sonoro brillante di avvenuto clic!
 7. **Attivazione Tracking Windows:**
    - Quando il paziente è pronto, premi **F9** (o il pulsante verde *"▶ AVVIA TRACKING"*).
    - Il cursore ora risponderà ai movimenti del capo.

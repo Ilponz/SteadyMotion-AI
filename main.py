@@ -22,6 +22,8 @@ from core.acoustic_trigger import AcousticTrigger
 from core.camera_worker import CameraWorker
 from core.dsp_filter import PointFilter2D
 from core.dwell_clicker import DwellClicker
+from core.ergonomics import ErgonomicsMonitor
+from core.audio_feedback import AudioFeedback
 from core.tracker_engine import FaceTrackerEngine
 from core.utils import get_resource_path
 from core.virtual_input import (
@@ -89,6 +91,12 @@ class SteadyMotionApp:
         self.acoustic.is_enabled = False  # Spento di default, attivabile da preset o GUI
         self.acoustic.start()
 
+        # Feedback Uditivo Asincrono dei Clic (Multi-Sensoriale)
+        self.audio_feedback = AudioFeedback(enabled=True)
+
+        # Monitor Ergonomico & Rilevamento Affaticamento Muscolare Cervicale
+        self.ergonomics_monitor = ErgonomicsMonitor()
+
         # Camera Worker (Triple Buffering, Buffer=1, FourCC MJPG, 60 FPS, Event-Driven)
         self.camera = CameraWorker(
             camera_index=0,
@@ -142,6 +150,8 @@ class SteadyMotionApp:
         self.shared_hud_x: int = 0
         self.shared_hud_y: int = 0
         self.shared_hud_dirty: bool = False
+        self.shared_is_fatigued: bool = False
+        self.shared_fatigue_reason: str = "Nessuna"
 
         # Stato tasti globali
         self.prev_f12 = False
@@ -264,22 +274,33 @@ class SteadyMotionApp:
             self.acoustic.update_params(enabled=bool(value), threshold=self.acoustic.threshold)
         elif param_name == "acoustic_threshold":
             self.acoustic.update_params(enabled=self.acoustic.is_enabled, threshold=float(value))
+        elif param_name == "audio_feedback_enabled":
+            self.audio_feedback.set_enabled(bool(value))
 
     def _on_dwell_click(self, action: str, x: int, y: int):
         if self.is_paused:
             return
         if action == "left":
             self.mouse.click("left")
+            self.audio_feedback.play("click_left")
         elif action == "right":
             self.mouse.click("right")
+            self.audio_feedback.play("click_right")
         elif action == "double":
             self.mouse.double_click()
+            self.audio_feedback.play("double_click")
         elif action == "drag":
             self.mouse.toggle_drag()
+            if self.mouse.is_dragging:
+                self.audio_feedback.play("drag_start")
+            else:
+                self.audio_feedback.play("drag_end")
         elif action == "scroll_up":
             self.mouse.scroll(3)
+            self.audio_feedback.play("click_left")
         elif action == "scroll_down":
             self.mouse.scroll(-3)
+            self.audio_feedback.play("click_left")
 
         if hasattr(self, "_action_palette") and self._action_palette is not None and self._action_palette.winfo_exists():
             self._action_palette.on_click_completed(action)
@@ -297,12 +318,14 @@ class SteadyMotionApp:
         """Genera un clic immediato all'impulso acustico."""
         if not self.is_paused:
             self.mouse.click("left")
+            self.audio_feedback.play("click_left")
 
     def recenter(self):
         """Calibra la postura neutrale comoda del paziente come centro esatto del desktop."""
         if self.is_demo:
             self.dsp_filter.reset()
             self.dwell_clicker.cancel()
+            self.ergonomics_monitor.reset_reference()
             return
 
         ret, frame, ts, _ = self.camera.get_latest_frame()
@@ -316,6 +339,7 @@ class SteadyMotionApp:
                     res.cursor_raw_y,
                     self.tracker.neutral_ipd,
                 )
+                self.ergonomics_monitor.reset_reference(res.yaw, res.pitch, res.roll)
         self.dsp_filter.reset()
         self.dwell_clicker.cancel()
 
@@ -323,6 +347,9 @@ class SteadyMotionApp:
         self.is_paused = not self.is_paused
         if self.is_paused:
             self.hud.hide()
+            self.audio_feedback.play("pause")
+        else:
+            self.audio_feedback.play("resume")
         if hasattr(self, "_action_palette") and self._action_palette is not None and self._action_palette.winfo_exists():
             self._action_palette.set_pause_state(self.is_paused)
 
@@ -406,6 +433,7 @@ class SteadyMotionApp:
             last_loop_time = t_now
 
             raw_x, raw_y = 0.5, 0.5
+            ergo_st = None
             if ret and frame is not None:
                 res = self.tracker.process_frame(frame, timestamp_sec=t_now)
                 face_detected = res.face_detected
@@ -415,6 +443,9 @@ class SteadyMotionApp:
                 roll = res.roll
                 raw_x = res.cursor_raw_x
                 raw_y = res.cursor_raw_y
+
+                if face_detected:
+                    ergo_st = self.ergonomics_monitor.update(yaw, pitch, roll, now=t_now)
 
                 # Iniezione mouse e Clic a sosta eseguiti SOLO se armato (non in pausa)
                 if face_detected and not is_blinking and not self.is_paused:
@@ -442,6 +473,8 @@ class SteadyMotionApp:
                 self.shared_yaw = yaw
                 self.shared_pitch = pitch
                 self.shared_roll = roll
+                self.shared_is_fatigued = ergo_st.is_fatigued if ergo_st else False
+                self.shared_fatigue_reason = ergo_st.fatigue_reason if ergo_st else "Nessuna"
                 if face_detected:
                     self.shared_raw_x = raw_x
                     self.shared_raw_y = raw_y
@@ -471,6 +504,8 @@ class SteadyMotionApp:
             progress = self.shared_hud_progress
             hx = self.shared_hud_x
             hy = self.shared_hud_y
+            is_fatigued = self.shared_is_fatigued
+            fatigue_reason = self.shared_fatigue_reason
             self.shared_hud_dirty = False
 
         if self.is_paused or not self.dwell_clicker.is_enabled:
@@ -489,6 +524,8 @@ class SteadyMotionApp:
             yaw=yaw,
             pitch=pitch,
             roll=roll,
+            is_fatigued=is_fatigued,
+            fatigue_reason=fatigue_reason,
         )
 
         self.root.after(33, self._gui_update_loop)
@@ -499,6 +536,7 @@ class SteadyMotionApp:
         if self.tracking_thread and self.tracking_thread.is_alive():
             self.tracking_thread.join(timeout=1.0)
         disable_high_precision_timer()
+        self.audio_feedback.stop()
         self.camera.stop()
         self.acoustic.stop()
         self.hud.hide()

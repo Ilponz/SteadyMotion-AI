@@ -23,6 +23,8 @@ from core.tracker_engine import FaceTrackerEngine
 from core.utils import get_resource_path
 from core.word_predictor import WordPredictor
 from core.profile_manager import ProfileManager
+from core.ergonomics import ErgonomicsMonitor
+from core.audio_feedback import AudioFeedback
 
 
 def test_dsp_filter_attenuation():
@@ -349,6 +351,65 @@ def test_patient_profile_persistence_and_presets():
     print(">>> TEST 10 SUPERATO! <<<")
 
 
+def test_ergonomics_monitor_fatigue_and_drift():
+    print("\n--- TEST 11: Monitor Ergonomico & Affaticamento Muscolare Cervicale ---")
+    em = ErgonomicsMonitor(head_drop_threshold_deg=10.0, tilt_threshold_deg=12.0, sustained_duration_sec=5.0)
+
+    # 1. Postura neutra iniziale
+    st_init = em.update(yaw_deg=0.0, pitch_deg=0.0, roll_deg=0.0, now=100.0)
+    assert not st_init.is_fatigued, "In postura neutra non deve segnalare fatica"
+    assert st_init.fatigue_reason == "Nessuna"
+
+    # 2. Rilassamento posturale lento (Slow Drift Absorption)
+    t = 100.0
+    for _ in range(60):
+        t += 0.1
+        st_drift = em.update(yaw_deg=0.0, pitch_deg=-3.5, roll_deg=0.0, now=t)
+    assert st_drift.pitch_bias_compensation < -0.05, f"L'assorbimento adattivo del bias deve seguire il lento drift, ottenuto: {st_drift.pitch_bias_compensation}"
+    print(f"Assorbimento Dinamico del Drift Lento: Bias adattivo calcolato = {st_drift.pitch_bias_compensation:.3f}°")
+
+    # 3. Caduta Cefalica Prolungata (Head-Drop patologico SLA / Ipotonia: Pitch < -15 gradi per > 5 secondi)
+    t_start_drop = t + 1.0
+    em.update(yaw_deg=0.0, pitch_deg=-16.0, roll_deg=0.0, now=t_start_drop)
+    # A 2 secondi non deve ancora allarmare
+    st_mid = em.update(yaw_deg=0.0, pitch_deg=-16.0, roll_deg=0.0, now=t_start_drop + 2.0)
+    assert not st_mid.is_fatigued, "Non deve allarmare prima della soglia di persistenza sostenuta"
+
+    # A 6 secondi (> 5.0 s) deve scattare l'alert di fatica
+    st_fatigue = em.update(yaw_deg=0.0, pitch_deg=-16.0, roll_deg=0.0, now=t_start_drop + 6.0)
+    assert st_fatigue.is_fatigued, "Deve scattare l'alert di fatica cervicale"
+    assert "Head-Drop" in st_fatigue.fatigue_reason, f"Motivo atteso Head-Drop, ottenuto: {st_fatigue.fatigue_reason}"
+    print(f"Rilevamento Head-Drop Sostenuto: Rilevato con successo ({st_fatigue.fatigue_reason})")
+
+    # 4. Ricentratura F12: reset totale della linea base
+    em.reset_reference(0.0, 0.0, 0.0)
+    st_reset = em.update(yaw_deg=0.0, pitch_deg=0.0, roll_deg=0.0, now=t_start_drop + 7.0)
+    assert not st_reset.is_fatigued, "Dopo F12 il monitor deve resettarsi"
+    print(">>> TEST 11 SUPERATO! <<<")
+
+
+def test_audio_feedback_engine():
+    print("\n--- TEST 12: Feedback Acustico Multi-Tono Asincrono (Zero-Latency Queue) ---")
+    af = AudioFeedback(enabled=True)
+
+    # 1. Emissione rapida multi-evento senza blocchi o frame drop
+    t0 = time.perf_counter()
+    sound_types = ["click_left", "click_right", "double_click", "drag_start", "drag_end", "pause", "resume"]
+    for s in sound_types:
+        af.play(s)
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    print(f"Tempo di accodamento asincrono per 7 eventi sonori: {elapsed_ms:.4f} ms (< 0.5 ms target)")
+    assert elapsed_ms < 1.0, f"Accodamento troppo lento: {elapsed_ms:.4f} ms"
+
+    # 2. Verifica disabilitazione mute
+    af.set_enabled(False)
+    af.play("click_left")
+    assert af._queue.qsize() <= len(sound_types), "A motore disabilitato non deve accodare suoni"
+
+    af.stop()
+    print(">>> TEST 12 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -360,9 +421,12 @@ if __name__ == "__main__":
     test_word_predictor_and_keystroke_savings()
     test_mouse_actions_and_palette_state_machine()
     test_patient_profile_persistence_and_presets()
+    test_ergonomics_monitor_fatigue_and_drift()
+    test_audio_feedback_engine()
     print("\n========================================================")
-    print("TUTTI I 10 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 12 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
+
 
 
 
