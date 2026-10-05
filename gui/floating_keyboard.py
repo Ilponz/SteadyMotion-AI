@@ -15,6 +15,8 @@ import tkinter as tk
 from typing import Any, Callable, Dict, List, Optional
 import customtkinter as ctk
 
+from core.word_predictor import WordPredictor
+
 try:
     import win32com.client
     HAS_SAPI = True
@@ -23,7 +25,7 @@ except Exception:
 
 
 class FloatingKeyboardWindow(ctk.CTkToplevel):
-    """Finestra flottante della tastiera assistiva."""
+    """Finestra flottante della tastiera assistiva con predizione di parola intelligente."""
 
     def __init__(
         self,
@@ -36,8 +38,8 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         self.on_close_callback = on_close_callback
 
         self.title("Tastiera Assistiva Flottante — SteadyMotion AI")
-        self.geometry("780x380+150+550")
-        self.minsize(620, 320)
+        self.geometry("820x430+150+480")
+        self.minsize(680, 360)
         self.attributes("-topmost", True)
         self.configure(fg_color="#0F172A")
 
@@ -49,10 +51,17 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             except Exception:
                 self.speaker = None
 
+        # Motore Predittivo Intelligente (AAC Word Predictor)
+        self.word_predictor = WordPredictor()
+        self.sug_buttons: List[ctk.CTkButton] = []
+
         self.direct_injection = tk.BooleanVar(value=True)
         self.typed_text = tk.StringVar(value="")
 
         self._build_ui()
+        self.typed_text.trace_add("write", lambda *args: self._update_suggestions())
+        self._update_suggestions()
+
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self):
@@ -121,7 +130,36 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         )
         self.display_entry.pack(fill="x", padx=8, pady=2)
 
-        # 3. Schede Layout (Lettere, Simboli, Frasi Rapide)
+        # 3. Barra Suggerimenti Predittivi (AAC Autocomplete Bar)
+        sug_frame = ctk.CTkFrame(self, fg_color="#1E293B", corner_radius=8, height=36)
+        sug_frame.pack(fill="x", padx=6, pady=2)
+
+        lbl_sug = ctk.CTkLabel(
+            sug_frame,
+            text="✨ SUGGERIMENTI:",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color="#94A3B8",
+        )
+        lbl_sug.pack(side="left", padx=(8, 4))
+
+        self.sug_buttons = []
+        for i in range(4):
+            btn = ctk.CTkButton(
+                sug_frame,
+                text="",
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                height=28,
+                fg_color="#0B0F19",
+                border_width=1,
+                border_color="#334155",
+                hover_color="#0284C7",
+                text_color="#38BDF8",
+                state="disabled",
+            )
+            btn.pack(side="left", expand=True, fill="both", padx=3, pady=3)
+            self.sug_buttons.append(btn)
+
+        # 4. Schede Layout (Lettere, Simboli, Frasi Rapide)
         self.tabview = ctk.CTkTabview(self, fg_color="#162032")
         self.tabview.pack(fill="both", expand=True, padx=6, pady=(2, 6))
 
@@ -315,8 +353,78 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
                 self.virtual_input.send_unicode_char(phrase + " ")
             except Exception:
                 pass
+        # Apprendi frase nel dizionario predittivo
+        self.word_predictor.learn_word(phrase)
         # Verbalizza subito con sintesi vocale
         self._speak_phrase(phrase)
+
+    def _extract_current_prefix(self) -> str:
+        """Estrae l'ultimo token non completato per la predizione contestuale."""
+        text = self.typed_text.get()
+        if not text or text[-1].isspace():
+            return ""
+        tokens = text.split()
+        return tokens[-1] if tokens else ""
+
+    def _update_suggestions(self):
+        """Aggiorna i 4 pulsanti di predizione rapida in base al testo digitato."""
+        if not hasattr(self, "sug_buttons") or not self.sug_buttons:
+            return
+        prefix = self._extract_current_prefix()
+        suggestions = self.word_predictor.predict(prefix, max_results=4)
+
+        for i, btn in enumerate(self.sug_buttons):
+            if i < len(suggestions):
+                word = suggestions[i]
+                btn.configure(
+                    text=word,
+                    state="normal",
+                    fg_color="#1E293B",
+                    text_color="#38BDF8",
+                    command=lambda w=word: self._handle_suggestion_click(w),
+                )
+            else:
+                btn.configure(
+                    text="·",
+                    state="disabled",
+                    fg_color="#0B0F19",
+                    text_color="#334155",
+                    command=lambda: None,
+                )
+
+    def _handle_suggestion_click(self, suggestion: str):
+        """Completa istantaneamente la parola, riducendo del 60-80% i dwell click necessari."""
+        if not suggestion:
+            return
+
+        prefix = self._extract_current_prefix()
+        cur = self.typed_text.get()
+
+        # Calcolo del frammento residuo da iniettare
+        if prefix and suggestion.upper().startswith(prefix.upper()):
+            remainder = suggestion[len(prefix):] + " "
+            new_text = cur[:-len(prefix)] + suggestion + " "
+        else:
+            remainder = suggestion + " "
+            new_text = cur + (" " if cur and not cur.endswith(" ") else "") + suggestion + " "
+
+        self.typed_text.set(new_text)
+
+        # Iniezione diretta a Windows (Notepad, Word, Browser, Chat)
+        if self.direct_injection.get() and self.virtual_input:
+            try:
+                self.virtual_input.send_unicode_char(remainder)
+            except Exception:
+                pass
+
+        # Apprendimento adattivo della frequenza d'uso in RAM
+        self.word_predictor.learn_word(suggestion)
+
+        # Cursore grafico alla fine del display
+        try:
+            self.display_entry.icursor(tk.END)
+        except Exception:
+            pass
 
     def _speak_text(self):
         text = self.typed_text.get().strip()

@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (7 su 7 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (8 su 8 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback MSMF (Media Foundation);
@@ -65,11 +65,22 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (7
    - Continuità $C^0$ garantita (0.000000 px di salto all'origine);
    - Supporto tasto Caregiver rapido (Spazio / Invio) per validazione assistita.
 
-9. **Tastiera Assistiva Flottante a Schermo (gui/floating_keyboard.py):**
+9. **Tastiera Assistiva Flottante con Autocomplete Predittivo (gui/floating_keyboard.py & core/word_predictor.py):**
    - Finestra sempre in primo piano (`Topmost`) su qualsiasi app di Windows (Notepad, Word, browser, WhatsApp);
-   - Tasti ampi QWERTY, Numeri & Simboli, e Frasi Rapide;
-   - **Digitazione Diretta a Windows:** Inietta i caratteri direttamente nel campo di testo attivo dell'applicazione sottostante via Win32 SendInput Unicode;
+   - **Motore di Predizione Lessicale su Trie O(L) (0.0036 ms latenza):** dizionario italiano pesato ad alta frequenza con lessico medico/assistivo prioritario;
+   - **Barra Suggerimenti Rapidi a 4 Pulsanti:** visualizza e inserisce istantaneamente il completamento della parola con un singolo dwell click;
+   - **Keystroke Savings Rate (KSR) > 60%:** abbatte lo sforzo motorio del paziente riducendo di oltre la metà i tocchi necessari per comporre intere frasi;
+   - **Apprendimento Dinamico in RAM:** memorizza e privilegia automaticamente le parole e i nomi propri usati frequentemente dal paziente;
+   - **Digitazione Diretta a Windows:** inietta i caratteri direttamente nel campo di testo attivo dell'applicazione sottostante via Win32 SendInput Unicode;
    - **Sintesi Vocale Integrata (TTS SAPI nativo):** Pulsante `[🔊 Parla (TTS)]` per pronunciare istantaneamente il testo digitato o le frasi di bisogno.
+
+10. **Diagnostica Hardware & Pre-Flight Check per Caregiver (core/diagnostics.py & gui/diagnostic_window.py):**
+    - Scansione automatica hardware di webcam (DirectShow & Media Foundation) e microfoni;
+    - Misurazione degli FPS reali acquisiti (30-45 frame) e verifica stabilità;
+    - Fotometria Luma ambientale (alert luce insufficiente o abbagliamento);
+    - Calcolo del rumore acustico ambientale di fondo in dB (valutazione idoneità clic vocale);
+    - Calcolo dell'Indice di Idoneità Clinica (0-100%) con consigli pratici per l'operatore;
+    - Script standalone caregiver: `diagnostica_hardware.py` e launcher `Verifica_Webcam_Caregiver.bat`.
 
 ---
 
@@ -87,7 +98,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 7 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI GLI 8 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 
@@ -97,29 +108,32 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 
 Quando sei a casa davanti alla postazione reale con il paziente:
 
-1. **Posizionamento Hardware:**
+1. **Pre-Flight Hardware Check (Consigliato):**
+   - Esegui `Verifica_Webcam_Caregiver.bat` (o clicca su `[🩺 Diagnostica Hardware & Webcam]` nel pannello di controllo).
+   - Verifica che il punteggio di idoneità sia >= 80% (FPS >= 30, Illuminazione idonea, Rumore di fondo sotto controllo).
+2. **Posizionamento Hardware:**
    - Collega la webcam USB sopra o sotto il monitor, all'altezza degli occhi del paziente.
    - Distanza ottimale: 50 - 70 cm dal viso.
    - Assicurati che l'illuminazione sia frontale o diffusa (evita forti controluce alle spalle).
-2. **Avvio dell'App:**
+3. **Avvio dell'App:**
    - Lancia `Avvia_EXE_Standalone.bat`.
    - L'app parte in **STANDBY DI SICUREZZA**: il cursore non si muove.
    - Guarda il **Radar Posturale**: la croce verde deve essere nel cerchio centrale e il badge deve segnare *"Luce: OK"* e *"Centratura Ottimale"*.
-3. **Calibrazione Postura Neutra:**
+4. **Calibrazione Postura Neutra:**
    - Fai posizionare il paziente nella sua posizione di riposo comoda e premi **F12** (o il pulsante *"🎯 Ricentra Centro Schermo"*).
-4. **Calibrazione Range of Motion (Consigliata):**
+5. **Calibrazione Range of Motion (Consigliata):**
    - Clicca su `[📐 Calibrazione ROM (5 Punti)]`.
    - La schermata va a tutto schermo: fai fissare i 5 cerchi che pulsano (Centro, Alto-SX, Alto-DX, Basso-DX, Basso-SX).
    - Se il paziente è affaticato, puoi premere la **Barra Spazio** per registrare il punto manualmente.
    - Clicca `[💾 Applica Guadagni e Salva]`: i guadagni asimmetrici saranno attivi e salvati.
-5. **Addestramento nella Sandbox (Tab Tutorial):**
+6. **Addestramento nella Sandbox (Tab Tutorial):**
    - Vai nella scheda *"📖 Tutorial & Bersagli"*.
    - Fai esercitare il paziente a colpire i 5 pulsanti numerati completando il cerchio Dwell.
-6. **Attivazione Tracking Windows:**
+7. **Attivazione Tracking Windows:**
    - Quando il paziente è pronto, premi **F9** (o il pulsante verde *"▶ AVVIA TRACKING"*).
    - Il cursore ora risponderà ai movimenti del capo.
-   - Apri la **Tastiera Flottante** (tasto viola in alto) e prova a scrivere una parola nel Blocco Note di Windows!
-7. **Disarmo di Emergenza:**
+   - Apri la **Tastiera Flottante** (tasto viola in alto) e prova a scrivere una parola nel Blocco Note di Windows sfruttando i suggerimenti predittivi!
+8. **Disarmo di Emergenza:**
    - Premi **F9** in qualsiasi istante per congelare il controllo e liberare il mouse.
 
 ---

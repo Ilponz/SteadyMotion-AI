@@ -21,6 +21,7 @@ from core.dwell_clicker import DwellClicker
 from core.virtual_input import WindowsMouseController
 from core.tracker_engine import FaceTrackerEngine
 from core.utils import get_resource_path
+from core.word_predictor import WordPredictor
 
 
 def test_dsp_filter_attenuation():
@@ -189,6 +190,71 @@ def test_asymmetric_rom_mapping():
     print(">>> TEST 7 SUPERATO! <<<")
 
 
+def test_word_predictor_and_keystroke_savings():
+    print("\n--- TEST 8: Predizione di Parola AAC & Keystroke Savings Rate (KSR) ---")
+    wp = WordPredictor()
+
+    # 1. Benchmark Latenza Lookup su 1000 query
+    test_prefixes = ["bu", "ai", "inf", "do", "ca", "fr", "re", "se", "fa", "vo"]
+    t0 = time.perf_counter()
+    for _ in range(100):
+        for p in test_prefixes:
+            res = wp.predict(p, max_results=4)
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0 / 1000.0
+    print(f"Latenza media di lookup su Trie per query: {elapsed_ms:.4f} ms (< 0.1 ms target)")
+    assert elapsed_ms < 0.2, f"Lookup troppo lento: {elapsed_ms:.4f} ms"
+
+    # 2. Casing Preservation
+    p_upper = wp.predict("BU", max_results=4)
+    assert "BUONGIORNO" in p_upper, f"Mancata predizione uppercase: {p_upper}"
+    assert all(w.isupper() for w in p_upper), "Il formato deve preservare l'uppercase della tastiera"
+
+    p_title = wp.predict("Bu", max_results=4)
+    assert "Buongiorno" in p_title, f"Mancata predizione TitleCase: {p_title}"
+
+    # 3. Apprendimento Dinamico in RAM
+    wp.learn_word("fisioterapista", weight_boost=500)
+    learned_preds = wp.predict("fis", max_results=4)
+    assert learned_preds and learned_preds[0].lower() == "fisioterapista", "Auto-apprendimento fallito"
+    print("Auto-apprendimento dinamico in RAM: Verificato (100% priorità acquisita)")
+
+    # 4. Calcolo Scientifico Keystroke Savings Rate (KSR) su Frasi Cliniche
+    # KSR = (1 - actual_keystrokes / baseline_chars) * 100%
+    clinical_phrases = [
+        "BUONGIORNO INFERMIERE",
+        "VORREI ACQUA PER FAVORE",
+        "HO DOLORE SUBITO",
+        "AIUTO RESPIRARE MALE"
+    ]
+
+    total_baseline = 0
+    total_actual = 0
+
+    for phrase in clinical_phrases:
+        words = phrase.split()
+        for w in words:
+            total_baseline += len(w) + 1  # lettere + spazio
+            # Simula digitazione progressiva fino a comparsa della parola nei primi 4 suggerimenti
+            found = False
+            for length in range(1, len(w) + 1):
+                pref = w[:length]
+                sugs = [s.upper() for s in wp.predict(pref, max_results=4)]
+                if w.upper() in sugs:
+                    # Trovata! Keystrokes usati = length lettere + 1 click sul suggerimento
+                    total_actual += length + 1
+                    found = True
+                    break
+            if not found:
+                total_actual += len(w) + 1
+
+    ksr = (1.0 - (total_actual / total_baseline)) * 100.0
+    print(f"Keystrokes Baseline (Digitazione integrale): {total_baseline} tocchi")
+    print(f"Keystrokes Ottimizzati con Autocomplete:    {total_actual} tocchi")
+    print(f"Keystroke Savings Rate (KSR) Misurato:     {ksr:.1f}%")
+    assert ksr > 45.0, f"KSR insufficiente: {ksr:.1f}%"
+    print(">>> TEST 8 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -197,7 +263,9 @@ if __name__ == "__main__":
     test_tracker_video_mode_and_ipd_bounds()
     test_camera_triple_buffering_and_event()
     test_asymmetric_rom_mapping()
+    test_word_predictor_and_keystroke_savings()
     print("\n=======================================================")
-    print("TUTTI I 7 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI GLI 8 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("=======================================================")
+
 
