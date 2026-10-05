@@ -158,8 +158,26 @@ Quando sei a casa davanti alla postazione reale con il paziente:
 
 ---
 
-### 📌 PROSSIMI PASSI DA CHIEDERE ALL'AI DURANTE IL TEST A CASA
-- "Ho testato la webcam a casa: ecco i valori di illuminazione e come risponde il cursore..."
-- "Il paziente fa fatica a scendere verso il basso: regoliamo la deadzone o il guadagno verticale..."
-- "Aggiungiamo nuove frasi personalizzate alla tastiera vocale..."
+### 📌 PROSSIMI PASSI & COSA C'È DA FARE ADESSO (ROADMAP DA AVVIARE SUL NUOVO DISPOSITIVO)
+
+Quando ti sposti sul computer di casa o apri la nuova sessione, puoi dire all'AI:
+*"Procediamo con le prossime migliorie pianificate per SteadyMotion AI"* oppure scegliere direttamente una di queste opzioni prioritarie:
+
+1. **Opzione 1 (Prioritaria): Curva Balistica di Precisione Fisiologica (Ballistic Transfer Function)**
+   - Passare da mappatura puramente lineare a curva non-lineare ($\Delta x = \text{sign}(dx) \cdot |dx|^\gamma \cdot G$ con $\gamma \approx 1.25$):
+   - Consente al paziente di centrare con estrema facilità icone piccole o caselle di spunta al centro dello schermo, mantenendo allo stesso tempo la capacità di raggiungere gli angoli del monitor con micro-rotazioni del capo senza affaticamento.
+
+2. **Opzione 2: Modalità Co-Pilot & Rilevamento Intervento Caregiver**
+   - Intercettare il movimento del mouse fisico USB: se il caregiver interviene per spostare una finestra o cliccare, il tracciamento cefalico va in pausa temporanea di cortesia (1.5-2 secondi) per azzerare qualsiasi conflitto sul cursore di Windows.
+
+3. **Opzione 3: Personalizzazione Visiva Avanzata dell'HUD Ring (Ipovisione & Contrasto)**
+   - Dimensioni regolabili del cerchio Dwell (60, 80, 100, 120 px per schermi 4K o pazienti anziani/ipovedenti);
+   - 4 Temi cromatici ad alto contrasto (*Neon Emerald*, *Electric Cyan*, *High-Contrast Amber*, *Obsidian Violet*) per garantire leggibilità assoluta su qualsiasi sfondo di Windows (pagine web chiare, video scuri, testo fitto).
+
+---
+
+### 💬 COMANDI RAPIDI DA DARE ALL'AI AL RIENTRO:
+- *"Procediamo con l'Opzione 1 (Curva Balistica di Precisione) e l'Opzione 2 (Co-Pilot Caregiver)"*
+- *"Ho collegato la webcam reale a casa: ecco i risultati della diagnostica hardware..."*
+- *"Eseguiamo il collaudo dal vivo con il paziente"*
 ```
