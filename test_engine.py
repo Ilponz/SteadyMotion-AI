@@ -22,6 +22,7 @@ from core.virtual_input import WindowsMouseController
 from core.tracker_engine import FaceTrackerEngine
 from core.utils import get_resource_path
 from core.word_predictor import WordPredictor
+from core.profile_manager import ProfileManager
 
 
 def test_dsp_filter_attenuation():
@@ -255,6 +256,99 @@ def test_word_predictor_and_keystroke_savings():
     print(">>> TEST 8 SUPERATO! <<<")
 
 
+def test_mouse_actions_and_palette_state_machine():
+    print("\n--- TEST 9: Macchina a Stati Palette Clic & Azioni Win32 (One-Shot DX/2x, Drag, Scroll) ---")
+    mouse = WindowsMouseController()
+
+    # 1. Verifica Scroll Wheel Win32
+    mouse.scroll(3)
+    mouse.scroll(-3)
+    print("Iniezione MOUSEEVENTF_WHEEL (Scroll Su / Giù): OK")
+
+    # 2. Verifica Drag & Drop Toggle
+    assert not mouse.is_dragging, "Stato iniziale drag deve essere False"
+    mouse.toggle_drag()
+    assert mouse.is_dragging, "Dopo primo toggle deve essere in Drag attivo"
+    mouse.toggle_drag()
+    assert not mouse.is_dragging, "Dopo secondo toggle deve aver rilasciato il Drag"
+    print("Stato Drag & Drop Toggle (Mouse Down / Up): 100% Coerente")
+
+    # 3. Verifica Macchina a Stati One-Shot su Dwell Clicker
+    fired_action = None
+
+    def _click_cb(act, x, y):
+        nonlocal fired_action
+        fired_action = act
+
+    dc = DwellClicker(dwell_time=0.10, tolerance_radius=20.0, cooldown_time=0.01, click_callback=_click_cb)
+
+    # Test Clic Destro One-Shot
+    dc.set_action("right")
+    now = 100.0
+    dc.update(500, 500, now)
+    dc.update(500, 500, now + 0.15)
+    assert fired_action == "right", f"Azione attesa 'right', ricevuta '{fired_action}'"
+    assert dc.current_action == "left", "Dopo il Clic Destro deve ripristinare automaticamente 'left' (One-Shot)"
+
+    # Test Doppio Clic One-Shot
+    dc.has_fired = False
+    dc.last_click_time = 0.0
+    dc.set_action("double")
+    dc.update(500, 500, now + 0.30)
+    dc.update(500, 500, now + 0.45)
+    assert fired_action == "double", f"Azione attesa 'double', ricevuta '{fired_action}'"
+    assert dc.current_action == "left", "Dopo il Doppio Clic deve ripristinare automaticamente 'left' (One-Shot)"
+    print("Ripristino automatico One-Shot (Right -> Left, Double -> Left): Verificato")
+    print(">>> TEST 9 SUPERATO! <<<")
+
+
+def test_patient_profile_persistence_and_presets():
+    print("\n--- TEST 10: Persistenza Profili Paziente JSON & Integrità Preset Clinici ---")
+    pm = ProfileManager()
+
+    # 1. Verifica Validità 4 Preset Clinici
+    expected_presets = [
+        "Tetraplegia (Standard)",
+        "SLA (Minimo Sforzo)",
+        "Parkinson (Tremore Forte)",
+        "Distonia / Spasmi (Ipertono)"
+    ]
+    for p_name in expected_presets:
+        preset = pm.get_preset(p_name)
+        assert preset["gain"] > 0, f"Guadagno non valido per {p_name}"
+        assert preset["dwell_time"] > 0, f"Dwell non valido per {p_name}"
+        assert preset["deadzone"] >= 0, f"Deadzone non valida per {p_name}"
+        assert preset["min_cutoff"] > 0, f"Cutoff non valido per {p_name}"
+    print(f"Verifica Integrità dei 4 Preset Clinici ({len(expected_presets)}/4): 100% Conforme")
+
+    # 2. Test Serializzazione JSON e Recupero Parametri
+    test_profile_name = "Test_Clinical_Audit"
+    test_data = {
+        "gain": 3.75,
+        "gain_x_left": 4.50,
+        "gain_x_right": 2.10,
+        "gain_y_up": 3.20,
+        "gain_y_down": 2.40,
+        "dwell_time": 0.75,
+        "deadzone": 2.5,
+    }
+    saved_path = pm.save_profile(test_profile_name, test_data)
+    assert os.path.exists(saved_path), "File JSON del profilo non trovato su disco"
+
+    loaded_data = pm.load_profile(test_profile_name)
+    assert loaded_data is not None, "Caricamento profilo fallito"
+    for k, v in test_data.items():
+        assert loaded_data[k] == v, f"Discrepanza valore per chiave {k}: atteso {v}, ottenuto {loaded_data[k]}"
+    print(f"Salvataggio e Ripristino JSON su '{saved_path}': 100% Bit-Exact")
+
+    # Pulizia file di test
+    try:
+        os.remove(saved_path)
+    except Exception:
+        pass
+    print(">>> TEST 10 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -264,8 +358,11 @@ if __name__ == "__main__":
     test_camera_triple_buffering_and_event()
     test_asymmetric_rom_mapping()
     test_word_predictor_and_keystroke_savings()
-    print("\n=======================================================")
-    print("TUTTI GLI 8 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
-    print("=======================================================")
+    test_mouse_actions_and_palette_state_machine()
+    test_patient_profile_persistence_and_presets()
+    print("\n========================================================")
+    print("TUTTI I 10 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("========================================================")
+
 
 

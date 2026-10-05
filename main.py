@@ -114,8 +114,10 @@ class SteadyMotionApp:
             on_reset_rom=self.reset_symmetric_gain,
             on_open_keyboard=self.open_floating_keyboard,
             on_open_diagnostics=self.open_diagnostic_window,
+            on_open_palette=self.open_action_palette,
         )
         self.panel.demo_mode.set(self.is_demo)
+        self._action_palette = None
 
         # Chiusura pulita
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -218,6 +220,23 @@ class SteadyMotionApp:
             on_close=lambda: setattr(self, "_diag_window", None),
         )
 
+    def open_action_palette(self):
+        """Apre la mini-barra flottante delle azioni del mouse (Left, Right, Double, Drag, Scroll)."""
+        if hasattr(self, "_action_palette") and self._action_palette is not None and self._action_palette.winfo_exists():
+            self._action_palette.lift()
+            self._action_palette.focus_force()
+            return
+        from gui.action_palette import FloatingActionPaletteWindow
+        self._action_palette = FloatingActionPaletteWindow(
+            parent=self.root,
+            dwell_clicker=self.dwell_clicker,
+            virtual_input=self.mouse,
+            on_toggle_pause=self.toggle_pause,
+            on_toggle_keyboard=self.open_floating_keyboard,
+            on_close_callback=lambda: setattr(self, "_action_palette", None),
+        )
+        self._action_palette.set_pause_state(self.is_paused)
+
     def _on_param_change(self, param_name: str, value: Any):
         if param_name == "gain":
             self.gain = float(value)
@@ -257,6 +276,13 @@ class SteadyMotionApp:
             self.mouse.double_click()
         elif action == "drag":
             self.mouse.toggle_drag()
+        elif action == "scroll_up":
+            self.mouse.scroll(3)
+        elif action == "scroll_down":
+            self.mouse.scroll(-3)
+
+        if hasattr(self, "_action_palette") and self._action_palette is not None and self._action_palette.winfo_exists():
+            self._action_palette.on_click_completed(action)
 
     def _on_dwell_progress(self, progress: float, x: int, y: int):
         if self.is_paused:
@@ -297,6 +323,8 @@ class SteadyMotionApp:
         self.is_paused = not self.is_paused
         if self.is_paused:
             self.hud.hide()
+        if hasattr(self, "_action_palette") and self._action_palette is not None and self._action_palette.winfo_exists():
+            self._action_palette.set_pause_state(self.is_paused)
 
     def _check_global_hotkeys(self):
         """Intercetta F12 ed F9 a livello OS globale."""

@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (8 su 8 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (10 su 10 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback MSMF (Media Foundation);
@@ -37,12 +37,13 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (8
    - API nativa ctypes `SendInput` a 64-bit con struttura `INPUT` pre-allocata staticamente (zero allocazioni heap per frame, 3.5 µs di latenza);
    - Supporto nativo `Per-Monitor DPI Awareness v2` (-4) per prevenire disallineamenti su monitor 2K/4K con scaling 125%/150%;
    - Mappatura normalizzata assoluta virtual desktop 0 - 65535 priva di bias direzionale;
-   - Metodi di digitazione diretta `send_unicode_char` e `send_key_event` per la tastiera a schermo.
+   - Metodi di digitazione diretta `send_unicode_char`, `send_key_event` e rotellina virtuale `scroll` (`MOUSEEVENTF_WHEEL`).
 
 5. **Dwell Clicker con Algoritmo Leaky Bucket (core/dwell_clicker.py):**
    - Clic a sosta temporizzata (default 650 ms);
    - Pozzo di gravità (Grace Zone a 1.85x): se uno spasmo sposta temporaneamente il puntatore all'esterno, il progresso decade linearmente anziché azzerarsi bruscamente;
-   - Micro-inseguimento posturale adattivo (< 4 px/s) per assorbire il rilassamento muscolare del collo.
+   - Micro-inseguimento posturale adattivo (< 4 px/s) per assorbire il rilassamento muscolare del collo;
+   - Macchina a stati One-Shot integrata (ripristino automatico a Left Click dopo Clic Destro o Doppio Clic).
 
 6. **Trigger Acustico Ausiliario Anti-Rumore (core/acoustic_trigger.py):**
    - Microfono webcam con pre-enfasi passa-alto differenziale e Zero-Crossing Rate (ZCR > 0.08);
@@ -82,6 +83,15 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (8
     - Calcolo dell'Indice di Idoneità Clinica (0-100%) con consigli pratici per l'operatore;
     - Script standalone caregiver: `diagnostica_hardware.py` e launcher `Verifica_Webcam_Caregiver.bat`.
 
+11. **Barra Flottante dei Clic & Palette Azioni Assistive (gui/action_palette.py):**
+    - Mini-barra verticale sempre in primo piano (`Topmost`) per il controllo autonomo al 100% di Windows;
+    - Tasti ampi per Dwell: Clic Sinistro Standard, Clic Destro Contestuale (One-Shot), Doppio Clic (One-Shot), Trascina & Rilascia (Drag & Drop con lock visivo), Scorrimento Pagina (Scroll Su/Giù via rotellina virtuale) e Modalità Riposo/Pausa;
+    - Feedback visivo a LED con evidenziazione ad alto contrasto della modalità attiva.
+
+12. **Gestore Profili Paziente & Preset Clinici Persistenti (core/profile_manager.py):**
+    - 4 Preset clinici patologia-specifici preimpostati (Tetraplegia Standard, SLA Minimo Sforzo, Parkinson Forte Tremore, Distonia/Ipertono);
+    - Serializzazione JSON atomica su `config/profiles/` con salvataggio automatico dell'ultimo profilo attivo.
+
 ---
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
@@ -98,7 +108,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI GLI 8 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 10 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 
@@ -125,13 +135,14 @@ Quando sei a casa davanti alla postazione reale con il paziente:
    - Clicca su `[📐 Calibrazione ROM (5 Punti)]`.
    - La schermata va a tutto schermo: fai fissare i 5 cerchi che pulsano (Centro, Alto-SX, Alto-DX, Basso-DX, Basso-SX).
    - Se il paziente è affaticato, puoi premere la **Barra Spazio** per registrare il punto manualmente.
-   - Clicca `[💾 Applica Guadagni e Salva]`: i guadagni asimmetrici saranno attivi e salvati.
+   - Clicca `[💾 Applica Guadagni e Salva]`: i guadagni asimmetrici saranno attivi e salvati nel profilo JSON.
 6. **Addestramento nella Sandbox (Tab Tutorial):**
    - Vai nella scheda *"📖 Tutorial & Bersagli"*.
    - Fai esercitare il paziente a colpire i 5 pulsanti numerati completando il cerchio Dwell.
 7. **Attivazione Tracking Windows:**
    - Quando il paziente è pronto, premi **F9** (o il pulsante verde *"▶ AVVIA TRACKING"*).
    - Il cursore ora risponderà ai movimenti del capo.
+   - Apri la **Palette Clic** (`[🖱️ Palette Clic]`) per testare clic destro, doppio clic e scorrimento.
    - Apri la **Tastiera Flottante** (tasto viola in alto) e prova a scrivere una parola nel Blocco Note di Windows sfruttando i suggerimenti predittivi!
 8. **Disarmo di Emergenza:**
    - Premi **F9** in qualsiasi istante per congelare il controllo e liberare il mouse.

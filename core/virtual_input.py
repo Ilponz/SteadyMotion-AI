@@ -32,6 +32,7 @@ MOUSEEVENTF_MIDDLEDOWN = 0x0020
 MOUSEEVENTF_MIDDLEUP = 0x0040
 MOUSEEVENTF_ABSOLUTE = 0x8000
 MOUSEEVENTF_VIRTUALDESK = 0x4000
+MOUSEEVENTF_WHEEL = 0x0800
 
 SM_CXSCREEN = 0
 SM_CYSCREEN = 1
@@ -247,6 +248,15 @@ class WindowsMouseController:
             self.mouse_up("left")
         else:
             self.mouse_down("left")
+
+    def scroll(self, clicks: int):
+        """Esegue uno scroll della rotellina del mouse (positivo = su, negativo = giù)."""
+        extra = ULONG_PTR(0)
+        # 120 corrisponde a 1 tacca standard di rotellina in Windows (WHEEL_DELTA)
+        wheel_delta = int(clicks * 120)
+        mi = MOUSEINPUT(0, 0, wheel_delta, MOUSEEVENTF_WHEEL, 0, extra)
+        inp = INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=mi))
+        user32.SendInput(1, ctypes.byref(inp), self._input_size)
 
     def send_unicode_char(self, char: str):
         """Invia caratteri Unicode direttamente alla finestra Windows attiva."""

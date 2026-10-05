@@ -1,0 +1,10 @@
+{
+    "gain": 3.75,
+    "gain_x_left": 4.5,
+    "gain_x_right": 2.1,
+    "gain_y_up": 3.2,
+    "gain_y_down": 2.4,
+    "dwell_time": 0.75,
+    "deadzone": 2.5,
+    "name": "Test_Clinical_Audit"
+}

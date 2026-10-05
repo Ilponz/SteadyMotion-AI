@@ -21,6 +21,8 @@ import tkinter as tk
 from typing import Any, Callable, Dict, Optional
 import customtkinter as ctk
 
+from core.profile_manager import ProfileManager
+
 # Configurazione iniziale di CustomTkinter
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -79,6 +81,7 @@ class ControlPanel:
         on_reset_rom: Optional[Callable[[], None]] = None,
         on_open_keyboard: Optional[Callable[[], None]] = None,
         on_open_diagnostics: Optional[Callable[[], None]] = None,
+        on_open_palette: Optional[Callable[[], None]] = None,
     ):
         self.root = root
         self.on_param_change = on_param_change
@@ -90,6 +93,9 @@ class ControlPanel:
         self.on_reset_rom = on_reset_rom
         self.on_open_keyboard = on_open_keyboard
         self.on_open_diagnostics = on_open_diagnostics
+        self.on_open_palette = on_open_palette
+
+        self.profile_manager = ProfileManager()
 
         self.root.title("SteadyMotion AI • Assistive Control Center")
         self.root.geometry("540x860")
@@ -217,6 +223,19 @@ class ControlPanel:
         )
         self.btn_recenter.pack(side="left", expand=True, fill="x", padx=(0, 4))
 
+        self.btn_action_palette = ctk.CTkButton(
+            action_bar,
+            text="🖱️ Palette Clic",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            command=self.on_open_palette if self.on_open_palette else lambda: None,
+            height=32,
+            width=115,
+            corner_radius=8,
+            fg_color="#d97706",
+            hover_color="#b45309",
+        )
+        self.btn_action_palette.pack(side="right", padx=(4, 0))
+
         self.btn_floating_kbd = ctk.CTkButton(
             action_bar,
             text="⌨️ Tastiera Flottante",
@@ -228,7 +247,7 @@ class ControlPanel:
             fg_color="#8b5cf6",
             hover_color="#7c3aed",
         )
-        self.btn_floating_kbd.pack(side="right", padx=(4, 0))
+        self.btn_floating_kbd.pack(side="right", padx=(4, 4))
 
         # 3. Tabview con Setup Wizard & Tutorial inclusi
         self.tabview = ctk.CTkTabview(self.root, corner_radius=12)
@@ -932,6 +951,12 @@ class ControlPanel:
                 json.dump(config_data, f, indent=4)
         except Exception:
             pass
+
+        if hasattr(self, "profile_manager"):
+            try:
+                self.profile_manager.save_profile("Ultimo_Attivo", config_data)
+            except Exception:
+                pass
 
     def _load_config(self):
         if not os.path.exists(CONFIG_FILE):
