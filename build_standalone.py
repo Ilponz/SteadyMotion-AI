@@ -66,6 +66,12 @@ def build():
         if not os.path.exists(dist_models):
             shutil.copytree(os.path.join(BASE_DIR, "models"), dist_models)
 
+        # Copia script di avvio rapido e diagnostica caregiver nella cartella portatile
+        for extra_file in ("Avvia_EXE_Standalone.bat", "Verifica_Webcam_Caregiver.bat", "diagnostica_hardware.py"):
+            src = os.path.join(BASE_DIR, extra_file)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(dist_dir, extra_file))
+
         # Generazione archivio ZIP portatile per chiavetta USB
         zip_path = os.path.join(BASE_DIR, "dist", "SteadyMotion-AI-v3.0-Portable.zip")
         print("\nCompressione pacchetto portatile in corso...")

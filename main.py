@@ -113,6 +113,7 @@ class SteadyMotionApp:
             on_open_calibration=self.open_calibration_window,
             on_reset_rom=self.reset_symmetric_gain,
             on_open_keyboard=self.open_floating_keyboard,
+            on_open_diagnostics=self.open_diagnostic_window,
         )
         self.panel.demo_mode.set(self.is_demo)
 
@@ -203,6 +204,18 @@ class SteadyMotionApp:
             parent=self.root,
             virtual_input_controller=self.mouse,
             on_close_callback=lambda: setattr(self, "_floating_kbd", None),
+        )
+
+    def open_diagnostic_window(self):
+        """Apre la finestra di diagnostica hardware per webcam e microfono."""
+        if hasattr(self, "_diag_window") and self._diag_window is not None and self._diag_window.winfo_exists():
+            self._diag_window.lift()
+            self._diag_window.focus_force()
+            return
+        from gui.diagnostic_window import DiagnosticWindow
+        self._diag_window = DiagnosticWindow(
+            parent=self.root,
+            on_close=lambda: setattr(self, "_diag_window", None),
         )
 
     def _on_param_change(self, param_name: str, value: Any):

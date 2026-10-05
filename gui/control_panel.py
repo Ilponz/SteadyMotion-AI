@@ -78,6 +78,7 @@ class ControlPanel:
         on_open_calibration: Optional[Callable[[], None]] = None,
         on_reset_rom: Optional[Callable[[], None]] = None,
         on_open_keyboard: Optional[Callable[[], None]] = None,
+        on_open_diagnostics: Optional[Callable[[], None]] = None,
     ):
         self.root = root
         self.on_param_change = on_param_change
@@ -88,6 +89,7 @@ class ControlPanel:
         self.on_open_calibration = on_open_calibration
         self.on_reset_rom = on_reset_rom
         self.on_open_keyboard = on_open_keyboard
+        self.on_open_diagnostics = on_open_diagnostics
 
         self.root.title("SteadyMotion AI • Assistive Control Center")
         self.root.geometry("540x860")
@@ -297,7 +299,18 @@ class ControlPanel:
         step2.pack(fill="x", padx=6, pady=3)
         ctk.CTkLabel(step2, text="PASSO 2: Posiziona il paziente a 50-70 cm dalla webcam", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=8, pady=(4, 2))
         self.lbl_wizard_align = ctk.CTkLabel(step2, text="Stato: Controlla che il volto sia rilevato e la luce sia OK", font=ctk.CTkFont(family="Segoe UI", size=10), text_color="#10b981")
-        self.lbl_wizard_align.pack(anchor="w", padx=8, pady=(0, 6))
+        self.lbl_wizard_align.pack(anchor="w", padx=8, pady=(0, 4))
+
+        btn_diag_wiz = ctk.CTkButton(
+            step2,
+            text="🩺 Diagnostica Hardware (Test FPS / Luce / Audio)",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            height=28,
+            fg_color="#0284c7",
+            hover_color="#0369a1",
+            command=self.on_open_diagnostics if self.on_open_diagnostics else lambda: None,
+        )
+        btn_diag_wiz.pack(fill="x", padx=8, pady=(2, 6))
 
         # Step 3: Calibrazione Centro
         step3 = ctk.CTkFrame(self.tab_wizard, corner_radius=8)
@@ -743,6 +756,30 @@ class ControlPanel:
             width=100,
         )
         combo_scale.pack(side="right")
+
+        # Card Diagnostica Hardware & Sensori
+        card_diag = ctk.CTkFrame(self.tab_settings, corner_radius=10)
+        card_diag.pack(fill="x", padx=6, pady=6)
+        ctk.CTkLabel(card_diag, text="DIAGNOSTICA HARDWARE & SENSORI", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=10, pady=(6, 2))
+        ctk.CTkLabel(
+            card_diag,
+            text="Verifica se la webcam USB supporta MJPG a 60 FPS, misura il framerate reale, la luce e il rumore audio.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=("#64748b", "#94a3b8"),
+            wraplength=480,
+            justify="left",
+        ).pack(anchor="w", padx=10, pady=(0, 4))
+
+        btn_diag = ctk.CTkButton(
+            card_diag,
+            text="🩺 Avvia Test Hardware & Pre-Collaudo Caregiver",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            height=32,
+            fg_color="#0284c7",
+            hover_color="#0369a1",
+            command=self.on_open_diagnostics if self.on_open_diagnostics else lambda: None,
+        )
+        btn_diag.pack(fill="x", padx=10, pady=(4, 8))
 
     # ---------------- HELPERS UI & CALLBACKS ----------------
     def _create_slider_row(self, parent, label_text, var, from_, to, param_name, fmt="{:.2f}"):
