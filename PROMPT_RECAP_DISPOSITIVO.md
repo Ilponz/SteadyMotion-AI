@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (12 su 12 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (15 su 15 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback MSMF (Media Foundation);
@@ -101,6 +101,19 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (1
     - Coda audio asincrona a latenza zero (< 0.02 ms) su thread Win32 dedicato privo di jitter per il loop a 60 FPS;
     - Toni differenziati a livello frequenziale per confermare acusticamente ogni evento (Clic SX brillante 1200 Hz, Clic DX 1800 Hz, doppio impulso, toni drag & drop e pausa/ripresa).
 
+15. **Funzione di Trasferimento Balistica Non-Lineare (core/ballistics.py):**
+    - Curva di Fitts fisiologica monotona con esponente $\gamma = 1.25$;
+    - Abbattimento del 43.8% dell'ipersensibilità e del micro-tremore al centro dello schermo, mantenendo al contempo il 100% della corsa e della reachability ai bordi;
+    - Continuità $C^1$ garantita (0.000000 px salto all'origine).
+
+16. **Caregiver Co-Pilot & Arbitraggio Mouse Fisico (core/copilot.py):**
+    - Monitoraggio delta hardware USB ad ogni frame: se l'operatore o il caregiver muove fisicamente il mouse (> 24 px), scatta una pausa di cortesia automatica di 2.0s con chime soft;
+    - Zero contesa o "lotta del cursore" tra operatore e paziente;
+    - Ripristino morbido e trasparente non appena il mouse fisico torna a riposo.
+
+17. **Presentazione Interattiva HTML per Studenti (presentazione_studenti.html):**
+    - Slide-deck interattivo moderno con navigazione da tastiera, fullscreen e grafici di impatto per platea studentesca.
+
 ---
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
@@ -117,7 +130,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 12 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 15 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 

@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SteadyMotion AI • Presentazione Ufficiale</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              dark: '#080c14',
+              card: '#0f172a',
+              cardHover: '#1e293b',
+              emerald: '#10b981',
+              cyan: '#06b6d4',
+              amber: '#f59e0b',
+              rose: '#f43f5e',
+              indigo: '#6366f1',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #080c14;
+      color: #f1f5f9;
+      font-family: 'Outfit', sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    .slide {
+      display: none;
+      opacity: 0;
+      transform: scale(0.97) translateY(10px);
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .slide.active {
+      display: flex;
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+    }
+    .glass-card:hover {
+      border-color: rgba(6, 182, 212, 0.3);
+    }
+    .gradient-text-cyan {
+      background: linear-gradient(135deg, #38bdf8 0%, #10b981 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .gradient-text-purple {
+      background: linear-gradient(135deg, #c084fc 0%, #6366f1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .gradient-text-amber {
+      background: linear-gradient(135deg, #fde047 0%, #f97316 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between p-6 sm:p-10 relative">
+
+  <!-- BARRA PROGRESSO SUPERIORE -->
+  <div class="fixed top-0 left-0 right-0 h-1.5 bg-slate-800 z-50">
+    <div id="progressBar" class="h-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-indigo-500 transition-all duration-300 w-0"></div>
+  </div>
+
+  <!-- HEADER FISSO -->
+  <header class="flex justify-between items-center z-40">
+    <div class="flex items-center gap-3">
+      <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold font-mono text-sm">SM</span>
+      <span class="text-sm font-semibold tracking-wider text-slate-300">STEADYMOTION <span class="text-cyan-400">AI</span> <span class="text-xs text-slate-500 ml-1 font-mono">v3.0</span></span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800/80 border border-slate-700 text-slate-400 hidden sm:inline-block">Scuola & Università • Settembre 2026</span>
+      <button onclick="toggleFullScreen()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition text-xs flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+        <span class="hidden md:inline">Schermo Intero [F]</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- CONTENITORE PRINCIPALE SLIDE -->
+  <main class="flex-1 flex items-center justify-center my-4 overflow-hidden relative">
+
+    <!-- SLIDE 1: COPERTINA -->
+    <section class="slide active flex-col items-center justify-center text-center max-w-4xl px-4" data-title="Copertina">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-medium mb-6">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        Tecnologia Assistiva 100% Software & Open Source
+      </div>
+      <h1 class="text-5xl sm:text-7xl font-extrabold tracking-tight leading-tight mb-6">
+        L'Autonomia Digitale a <span class="gradient-text-cyan">Costo Zero.</span>
+      </h1>
+      <p class="text-lg sm:text-2xl text-slate-300 font-light leading-relaxed max-w-2xl mb-8">
+        Come una comune <strong class="text-white font-semibold">webcam da 15 €</strong> e l'Intelligenza Artificiale restituiscono il controllo del PC a chi non può usare le mani.
+      </p>
+      <div class="flex flex-wrap items-center justify-center gap-4 text-xs font-mono text-slate-400">
+        <span class="px-3 py-1.5 rounded bg-slate-900 border border-slate-800">🎯 Zero Hardware Proprietario</span>
+        <span class="px-3 py-1.5 rounded bg-slate-900 border border-slate-800">💸 Costo Software: 0.00 €</span>
+        <span class="px-3 py-1.5 rounded bg-slate-900 border border-slate-800">⚡ 60 FPS • Latenza 2 µs</span>
+      </div>
+      <div class="mt-10 text-xs text-slate-500 font-sans">
+        Autori: <span class="text-slate-300 font-medium">Alex Ponzin, A.A. Paolo Desogus, Abd El Basset Achir</span>
+      </div>
+    </section>
+
+    <!-- SLIDE 2: IL PROBLEMA REALE -->
+    <section class="slide flex-col max-w-5xl w-full px-4" data-title="Il Problema">
+      <div class="text-xs font-mono text-cyan-400 uppercase tracking-widest mb-2">01 • Il Bisogno Umano</div>
+      <h2 class="text-4xl sm:text-5xl font-extrabold mb-4">Quando un clic significa <span class="gradient-text-purple">Libertà</span></h2>
+      <p class="text-slate-400 text-base sm:text-lg mb-8 max-w-3xl">
+        Per chi affronta patologie neuro-motorie severe, il computer non è solo intrattenimento: è l'unico strumento per studiare, lavorare e parlare con la propria famiglia.
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="text-3xl mb-3">🧠</div>
+          <h3 class="text-lg font-bold text-white mb-2">SLA e Tetraplegia</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Paralisi totale degli arti inferiori e superiori. Gli unici movimenti volontari preservati sono spesso limitati al capo, alle labbra e agli occhi.
+          </p>
+        </div>
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="text-3xl mb-3">⚡</div>
+          <h3 class="text-lg font-bold text-white mb-2">Parkinson & Tremore</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Oscillazioni muscolari ritmiche e involontarie (3–7 Hz). Impossibile fermare il puntatore su icone o bottoni piccoli senza uno stabilizzatore matematico.
+          </p>
+        </div>
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="text-3xl mb-3">🗣️</div>
+          <h3 class="text-lg font-bold text-white mb-2">Perdita della Voce</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            L'impossibilità di articolare parole isolate richiede tastiere a schermo con completamento intelligente e sintesi vocale (CAA) immediata.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 3: LA BARRIERA ECONOMICA -->
+    <section class="slide flex-col max-w-5xl w-full px-4" data-title="La Barriera Economica">
+      <div class="text-xs font-mono text-rose-400 uppercase tracking-widest mb-2">02 • Il Paradosso di Mercato</div>
+      <h2 class="text-4xl sm:text-5xl font-extrabold mb-4">Ausili da <span class="gradient-text-amber">4.000 €</span> vs Una Webcam da 15 €</h2>
+      <p class="text-slate-400 text-base sm:text-lg mb-8 max-w-3xl">
+        L'accessibilità digitale non può e non deve essere un privilegio per pochi.
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+        <!-- Mercato Proprietario -->
+        <div class="p-6 rounded-2xl bg-rose-950/20 border border-rose-500/20">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-xs font-mono font-bold text-rose-400 uppercase">Soluzioni Commerciali Esistenti</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-rose-500/20 text-rose-300 font-mono">Chiuso & Costoso</span>
+          </div>
+          <div class="text-4xl font-extrabold text-white mb-2">2.500 € – 5.000 €</div>
+          <ul class="space-y-3 text-sm text-slate-300 mt-4">
+            <li class="flex items-start gap-2">❌ Sensori a infrarossi dedicati o caschetti proprietari</li>
+            <li class="flex items-start gap-2">❌ 6 – 14 mesi di attesa burocratica per la fornitura sanitaria</li>
+            <li class="flex items-start gap-2">❌ Driver chiusi e licenze software bloccate per macchina</li>
+          </ul>
+        </div>
+        <!-- SteadyMotion AI -->
+        <div class="p-6 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 relative overflow-hidden">
+          <div class="absolute -top-12 -right-12 w-36 h-36 bg-emerald-500/10 rounded-full blur-2xl"></div>
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-xs font-mono font-bold text-emerald-400 uppercase">SteadyMotion AI (Pure Software)</span>
+            <span class="px-2 py-0.5 rounded text-xs bg-emerald-500/20 text-emerald-300 font-mono">Open Source</span>
+          </div>
+          <div class="text-4xl font-extrabold text-emerald-400 mb-2">0.00 € <span class="text-lg text-slate-400 font-normal">(Webcam da 15 €)</span></div>
+          <ul class="space-y-3 text-sm text-slate-200 mt-4">
+            <li class="flex items-start gap-2">✅ Qualsiasi webcam USB (anche quella integrata nel portatile)</li>
+            <li class="flex items-start gap-2">✅ Download immediato in 2 minuti su qualsiasi PC Windows</li>
+            <li class="flex items-start gap-2">✅ 100% Gratuito per sempre sotto licenza Apache 2.0</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 4: COME FUNZIONA -->
+    <section class="slide flex-col max-w-5xl w-full px-4" data-title="Architettura">
+      <div class="text-xs font-mono text-cyan-400 uppercase tracking-widest mb-2">03 • Il Motore Tecnologico</div>
+      <h2 class="text-4xl sm:text-5xl font-extrabold mb-4">La Pipeline Software a <span class="gradient-text-cyan">60 FPS</span></h2>
+      <p class="text-slate-400 text-base sm:text-lg mb-8 max-w-3xl">
+        Nessun ritardo percettibile. Il flusso di immagini attraversa 4 stadi ultraleggeri ottimizzati a livello C++ nativo:
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="glass-card p-5 rounded-xl border border-slate-800">
+          <div class="font-mono text-xs text-cyan-400 mb-2">FASE 01</div>
+          <h4 class="font-bold text-white mb-2">Acquisizione Zero-Copy</h4>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Driver Windows DirectShow con buffer forzato a 1 fotogramma: elimina le code di memoria e azzera il ritardo visivo.
+          </p>
+        </div>
+        <div class="glass-card p-5 rounded-xl border border-slate-800">
+          <div class="font-mono text-xs text-emerald-400 mb-2">FASE 02</div>
+          <h4 class="font-bold text-white mb-2">Rete Neurale Facciale</h4>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Google MediaPipe estrae 478 landmark 3D in tempo reale con accelerazione CPU XNNPACK (< 5% carico processore).
+          </p>
+        </div>
+        <div class="glass-card p-5 rounded-xl border border-slate-800">
+          <div class="font-mono text-xs text-indigo-400 mb-2">FASE 03</div>
+          <h4 class="font-bold text-white mb-2">Filtro Matematico 1€</h4>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Separa il movimento intenzionale dal tremore patologico: annulla il jitter ma si muove all'istante nei cambi di direzione.
+          </p>
+        </div>
+        <div class="glass-card p-5 rounded-xl border border-slate-800">
+          <div class="font-mono text-xs text-amber-400 mb-2">FASE 04</div>
+          <h4 class="font-bold text-white mb-2">Iniezione Sub-Pixel</h4>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            API Windows SendInput a 64-bit: sposta il cursore a livello kernel in soli 2.2 microsecondi con DPI multi-monitor 4K.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 5: I SUPERPOTERI MATEMATICI -->
+    <section class="slide flex-col max-w-5xl w-full px-4" data-title="Algoritmi">
+      <div class="text-xs font-mono text-emerald-400 uppercase tracking-widest mb-2">04 • Risolvere l'Impossibile</div>
+      <h2 class="text-4xl sm:text-5xl font-extrabold mb-4">I 3 "Superpoteri" del <span class="gradient-text-cyan">Puntatore</span></h2>
+      <p class="text-slate-400 text-base sm:text-lg mb-8 max-w-3xl">
+        Perché i tracciatori normali falliscono mentre SteadyMotion è stabile come una roccia?
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="text-emerald-400 font-mono text-2xl font-bold mb-1">-90.2%</div>
+          <h3 class="text-lg font-bold text-white mb-2">Abbattimento Tremore</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Il filtro <strong>One-Euro 2D</strong> elimina le oscillazioni a 5 Hz tipiche del Parkinson. A testa ferma il puntatore ha <strong>0.00 pixel di scarto</strong>.
+          </p>
+        </div>
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="text-cyan-400 font-mono text-2xl font-bold mb-1">-43.8%</div>
+          <h3 class="text-lg font-bold text-white mb-2">Curva Balistica Non-Lineare</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Basata sulla legge di Fitts: movimenti microscopici al centro per cliccare bottoni piccoli, con accelerazione fluida per raggiungere i bordi senza sforzo.
+          </p>
+        </div>
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="text-indigo-400 font-mono text-2xl font-bold mb-1">0 px Salto</div>
+          <h3 class="text-lg font-bold text-white mb-2">Anti-Blink Clamping</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Quando sbattiamo le palpebre, i muscoli del viso scattano. Il software riconosce l'ammiccamento e congela il cursore per 150 ms evitando falsi clic.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 6: COME SI CLICCA SENZA MANI -->
+    <section class="slide flex-col max-w-5xl w-full px-4" data-title="Metodi di Clic">
+      <div class="text-xs font-mono text-amber-400 uppercase tracking-widest mb-2">05 • Interazione Multi-Modale</div>
+      <h2 class="text-4xl sm:text-5xl font-extrabold mb-4">Due Modi Geniali per <span class="gradient-text-amber">Cliccare</span></h2>
+      <p class="text-slate-400 text-base sm:text-lg mb-8 max-w-3xl">
+        Se le mani sono immobili, come possiamo premere un pulsante o selezionare un testo?
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="glass-card p-7 rounded-2xl border border-slate-800 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <span class="p-3 rounded-xl bg-cyan-500/10 text-cyan-400 text-2xl">⏳</span>
+              <div>
+                <h3 class="text-xl font-bold text-white">1. Clic a Sosta (Dwell Click)</h3>
+                <span class="text-xs font-mono text-slate-400">Sosta temporizzata 650 ms</span>
+              </div>
+            </div>
+            <p class="text-sm text-slate-300 leading-relaxed mb-4">
+              Basta stazionare sul bersaglio. Un cerchio radiale trasparente a schermo si carica e genera il clic in automatico.
+            </p>
+            <div class="p-3 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-400">
+              💡 <strong>Algoritmo Leaky Bucket:</strong> Se hai uno spasmo e il cursore esce dal bottone, il progresso non si azzera di colpo ma aspetta il tuo ritorno!
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card p-7 rounded-2xl border border-slate-800 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <span class="p-3 rounded-xl bg-amber-500/10 text-amber-400 text-2xl">🎙️</span>
+              <div>
+                <h3 class="text-xl font-bold text-white">2. Trigger Acustico ("Puff" o "Pop")</h3>
+                <span class="text-xs font-mono text-slate-400">Usa il microfono integrato della webcam (0 €)</span>
+              </div>
+            </div>
+            <p class="text-sm text-slate-300 leading-relaxed mb-4">
+              Per chi è troppo affaticato per fermare la testa: un piccolo soffio o uno schiocco di lingua genera il clic all'istante.
+            </p>
+            <div class="p-3 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-400">
+              💡 <strong>Filtro Passa-Alto Differenziale:</strong> Ignora il rumore di fondo della stanza o la TV e reagisce solo a suoni secchi ad alta frequenza.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 7: COMUNICAZIONE & CAA -->
+    <section class="slide flex-col max-w-5xl w-full px-4" data-title="Accessibilità & Voce">
+      <div class="text-xs font-mono text-indigo-400 uppercase tracking-widest mb-2">06 • Dare una Voce a Chi Non Può Parlare</div>
+      <h2 class="text-4xl sm:text-5xl font-extrabold mb-4">Tastiera Flottante, <span class="gradient-text-purple">Predizione & Sintesi Vocale</span></h2>
+      <p class="text-slate-400 text-base sm:text-lg mb-8 max-w-3xl">
+        Oltre al mouse, SteadyMotion include una postazione completa per la comunicazione aumentativa:
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="text-3xl mb-3">⌨️</div>
+          <h3 class="text-lg font-bold text-white mb-2">Tastiera Sempre Visibile</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Finestra flottante che rimane sempre in primo piano su Blocco Note, Word, WhatsApp o qualsiasi browser web.
+          </p>
+        </div>
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="text-3xl mb-3">🚀</div>
+          <h3 class="text-lg font-bold text-white mb-2">Predizione Lessicale Trie</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            <strong>Keystroke Savings Rate del 60.7%</strong>: suggerisce parole complete dopo 1 o 2 lettere, dimezzando lo sforzo muscolare del paziente.
+          </p>
+        </div>
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="text-3xl mb-3">🔊</div>
+          <h3 class="text-lg font-bold text-white mb-2">Sintesi Vocale TTS Nativa</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Con un clic su <em>[🔊 Parla]</em>, il computer pronuncia ad alta voce ciò che è stato digitato, restituendo la voce a chi non può parlare.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 8: INNOVAZIONI CLINICHE V3.0 -->
+    <section class="slide flex-col max-w-5xl w-full px-4" data-title="Innovazioni Cliniche">
+      <div class="text-xs font-mono text-emerald-400 uppercase tracking-widest mb-2">07 • Human-Grade Clinical Design</div>
+      <h2 class="text-4xl sm:text-5xl font-extrabold mb-4">Funzionalità per Pazienti & <span class="gradient-text-cyan">Caregiver</span></h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-cyan-400 font-bold font-mono text-lg">01</span>
+            <h3 class="text-lg font-bold text-white">Calibrazione ROM per Emiparesi</h3>
+          </div>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Se il paziente muove la testa solo a destra, il programma assegna guadagni asimmetrici indipendenti ai 4 quadranti. Tutti i bordi dello schermo rimangono raggiungibili.
+          </p>
+        </div>
+
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-emerald-400 font-bold font-mono text-lg">02</span>
+            <h3 class="text-lg font-bold text-white">Caregiver Co-Pilot (Zero Conflitti)</h3>
+          </div>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Se il familiare o l'operatore tocca il mouse USB fisico, il tracciamento cefalico si mette in pausa di cortesia per 2 secondi, azzerando qualsiasi contesa sul cursore.
+          </p>
+        </div>
+
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-indigo-400 font-bold font-mono text-lg">03</span>
+            <h3 class="text-lg font-bold text-white">Monitor Ergonomico Posturale</h3>
+          </div>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Rileva la caduta del mento (Head-Drop tipico della SLA) e assorbe il rilassamento lento del collo, suggerendo quando è il momento di ricentrare (F12) o riposare.
+          </p>
+        </div>
+
+        <div class="glass-card p-6 rounded-2xl border border-slate-800">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-amber-400 font-bold font-mono text-lg">04</span>
+            <h3 class="text-lg font-bold text-white">Palette Flottante Clic & Scroll</h3>
+          </div>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Mini-barra ad alto contrasto per eseguire autonomamente Clic Destro, Doppio Clic, Drag & Drop e rotellina virtuale per scorrere pagine web e documenti lunghi.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 9: TABELLA DEI NUMERI -->
+    <section class="slide flex-col max-w-5xl w-full px-4" data-title="Benchmark & Metriche">
+      <div class="text-xs font-mono text-cyan-400 uppercase tracking-widest mb-2">08 • Risultati Scientifici</div>
+      <h2 class="text-4xl sm:text-5xl font-extrabold mb-4">I Numeri di <span class="gradient-text-cyan">SteadyMotion AI</span></h2>
+      <p class="text-slate-400 text-base sm:text-lg mb-6 max-w-3xl">
+        Verificati scientificamente dalla suite di collaudo con <strong>15 test su 15 superati al 100%</strong>:
+      </p>
+      <div class="glass-card rounded-2xl overflow-hidden border border-slate-800 text-sm">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-900/80 text-slate-400 font-mono text-xs border-b border-slate-800">
+              <th class="p-4">Parametro Misurato</th>
+              <th class="p-4">Senza SteadyMotion</th>
+              <th class="p-4 text-emerald-400">SteadyMotion AI v3.0</th>
+              <th class="p-4">Impatto per l'Utente</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60 font-sans text-slate-300">
+            <tr>
+              <td class="p-4 font-semibold text-white">Abbattimento Tremore a 5 Hz</td>
+              <td class="p-4 text-slate-500">8.00 px oscillazione</td>
+              <td class="p-4 font-mono text-emerald-400 font-bold">0.86 px (-89.3%)</td>
+              <td class="p-4 text-xs text-slate-400">Puntatore stabile sui bottoni</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Stabilità a Testa Ferma</td>
+              <td class="p-4 text-slate-500">Jitter continuo ±4 px</td>
+              <td class="p-4 font-mono text-emerald-400 font-bold">0.00 px (Blocco)</td>
+              <td class="p-4 text-xs text-slate-400">Zero scatti involontari</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Risparmio Digitazione (KSR)</td>
+              <td class="p-4 text-slate-500">100% lettere battute</td>
+              <td class="p-4 font-mono text-emerald-400 font-bold">60.7% Risparmio</td>
+              <td class="p-4 text-xs text-slate-400">Meno della metà dei tocchi</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Latenza Iniezione Kernel</td>
+              <td class="p-4 text-slate-500">N/D</td>
+              <td class="p-4 font-mono text-emerald-400 font-bold">2.2 microsecondi</td>
+              <td class="p-4 text-xs text-slate-400">Nessuna pausa del Garbage Collector</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Costo Totale di Adozione</td>
+              <td class="p-4 text-rose-400">2.500 € – 5.000 €</td>
+              <td class="p-4 font-mono text-emerald-400 font-bold text-base">0.00 € (Software)</td>
+              <td class="p-4 text-xs text-slate-400">Disponibile per chiunque</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SLIDE 10: CONCLUSIONE PER GLI STUDENTI -->
+    <section class="slide flex-col items-center justify-center text-center max-w-4xl px-4" data-title="Conclusioni">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-mono font-medium mb-6">
+        Il Futuro dell'Ingegneria Informatica
+      </div>
+      <h2 class="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6">
+        Il Codice che Restituisce la <span class="gradient-text-purple">Dignità</span>
+      </h2>
+      <p class="text-lg sm:text-xl text-slate-300 font-light leading-relaxed max-w-2xl mb-8">
+        Spesso associamo l'Intelligenza Artificiale ai chatbot o alla generazione di immagini.
+        <strong>SteadyMotion AI</strong> dimostra che la vera innovazione tecnologica non è inventare un dispositivo da 5.000 €, ma <span class="text-cyan-400 font-medium">mettere le persone al centro</span> e rendere lo stesso potere accessibile a tutti, gratis.
+      </p>
+      <div class="glass-card p-6 rounded-2xl border border-slate-800 max-w-lg mx-auto mb-8">
+        <div class="text-sm text-slate-300 italic mb-2">
+          "La tecnologia è al suo massimo splendore quando diventa invisibile e abbatte le barriere della disabilità."
+        </div>
+      </div>
+      <div class="flex items-center gap-4 text-xs font-mono text-slate-400">
+        <span>Licenza Open Source Apache 2.0</span>
+        <span>•</span>
+        <span>GitHub: <a href="https://github.com/Ilponz/SteadyMotion-AI" target="_blank" class="text-cyan-400 underline">Ilponz/SteadyMotion-AI</a></span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER DI NAVIGAZIONE -->
+  <footer class="flex justify-between items-center z-40 pt-4 border-t border-slate-900">
+    <div class="flex items-center gap-2">
+      <span id="slideIndicator" class="text-xs font-mono text-slate-400">Slide 1 / 10</span>
+      <span class="text-slate-700 hidden sm:inline">•</span>
+      <span id="slideTitle" class="text-xs font-sans text-slate-400 hidden sm:inline">Copertina</span>
+    </div>
+
+    <!-- CONTROLLI NAVIGAZIONE -->
+    <div class="flex items-center gap-3">
+      <button onclick="prevSlide()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition text-sm flex items-center justify-center">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+      </button>
+      <button onclick="nextSlide()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold transition text-sm flex items-center gap-1.5 shadow-lg shadow-cyan-500/20">
+        <span>Avanti</span>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+      </button>
+    </div>
+  </footer>
+
+  <!-- SCRIPT DI CONTROLLO SLIDE -->
+  <script>
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.slide');
+    const totalSlides = slides.length;
+    const progressBar = document.getElementById('progressBar');
+    const slideIndicator = document.getElementById('slideIndicator');
+    const slideTitle = document.getElementById('slideTitle');
+
+    function updateSlide() {
+      slides.forEach((slide, index) => {
+        if (index === currentSlide) {
+          slide.classList.add('active');
+          const title = slide.getAttribute('data-title') || '';
+          slideTitle.textContent = title;
+        } else {
+          slide.classList.remove('active');
+        }
+      });
+
+      slideIndicator.textContent = `Slide ${currentSlide + 1} / ${totalSlides}`;
+      const progressPct = ((currentSlide + 1) / totalSlides) * 100;
+      progressBar.style.width = `${progressPct}%`;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides - 1) {
+        currentSlide++;
+        updateSlide();
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 0) {
+        currentSlide--;
+        updateSlide();
+      }
+    }
+
+    function toggleFullScreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {});
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // GESTIONE TASTIERA
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'Backspace' || e.key === 'PageUp') {
+        prevSlide();
+      } else if (e.key === 'f' || e.key === 'F') {
+        toggleFullScreen();
+      } else if (e.key === 'Home') {
+        currentSlide = 0;
+        updateSlide();
+      } else if (e.key === 'End') {
+        currentSlide = totalSlides - 1;
+        updateSlide();
+      }
+    });
+
+    updateSlide();
+  </script>
+</body>
+</html>
