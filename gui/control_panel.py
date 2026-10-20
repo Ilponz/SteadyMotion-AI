@@ -846,6 +846,31 @@ class ControlPanel:
             justify="left",
         ).pack(anchor="w", padx=10, pady=(0, 4))
 
+        # Selezione Sorgente Webcam a Caldo (Hot-Swap)
+        row_cam = ctk.CTkFrame(card_diag, fg_color="transparent")
+        row_cam.pack(fill="x", padx=10, pady=(4, 4))
+        ctk.CTkLabel(row_cam, text="Webcam Attiva:", font=ctk.CTkFont(family="Segoe UI", size=11)).pack(side="left")
+
+        self.cam_combo = ctk.CTkComboBox(
+            row_cam,
+            values=["Webcam 0", "Webcam 1", "Webcam 2"],
+            command=self._on_select_camera,
+            width=130,
+        )
+        self.cam_combo.set("Webcam 0")
+        self.cam_combo.pack(side="right", padx=(4, 0))
+
+        btn_refresh_cam = ctk.CTkButton(
+            row_cam,
+            text="🔄 Cerca",
+            width=65,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color="#334155",
+            hover_color="#475569",
+            command=self._refresh_camera_list,
+        )
+        btn_refresh_cam.pack(side="right", padx=2)
+
         btn_diag = ctk.CTkButton(
             card_diag,
             text="🩺 Avvia Test Hardware & Pre-Collaudo Caregiver",
@@ -855,7 +880,35 @@ class ControlPanel:
             hover_color="#0369a1",
             command=self.on_open_diagnostics if self.on_open_diagnostics else lambda: None,
         )
-        btn_diag.pack(fill="x", padx=10, pady=(4, 8))
+        btn_diag.pack(fill="x", padx=10, pady=(6, 8))
+
+    def _refresh_camera_list(self):
+        """Scansiona gli indici video hardware e aggiorna il menu a tendina."""
+        try:
+            from core.camera_worker import CameraWorker
+            cams = CameraWorker.get_available_cameras(max_probe=4)
+            if cams:
+                vals = [f"Webcam {idx}" for idx in cams]
+                self.cam_combo.configure(values=vals)
+                self.cam_combo.set(vals[0])
+            else:
+                self.cam_combo.configure(values=["Nessuna webcam"])
+                self.cam_combo.set("Nessuna webcam")
+        except Exception:
+            pass
+
+    def _on_select_camera(self, choice: str):
+        """Commuta la sorgente video quando il caregiver seleziona una nuova webcam."""
+        if not choice.startswith("Webcam "):
+            return
+        try:
+            cam_idx = int(choice.replace("Webcam ", "").strip())
+            if self.on_switch_camera:
+                ok = self.on_switch_camera(cam_idx)
+                if ok:
+                    self.demo_mode.set(False)
+        except Exception:
+            pass
 
     # ---------------- HELPERS UI & CALLBACKS ----------------
     def _create_slider_row(self, parent, label_text, var, from_, to, param_name, fmt="{:.2f}"):

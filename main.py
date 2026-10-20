@@ -156,6 +156,7 @@ class SteadyMotionApp:
             on_open_keyboard=self.open_floating_keyboard,
             on_open_diagnostics=self.open_diagnostic_window,
             on_open_palette=self.open_action_palette,
+            on_switch_camera=self.switch_camera_source,
         )
         self.panel.demo_mode.set(self.is_demo)
         self._action_palette = None
@@ -210,6 +211,15 @@ class SteadyMotionApp:
     def toggle_demo(self, enabled: bool):
         """Attiva o disattiva la modalità demo di simulazione cefalica."""
         self.is_demo = enabled
+
+    def switch_camera_source(self, camera_index: int) -> bool:
+        """Commuta la sorgente webcam a caldo."""
+        ok = self.camera.switch_camera(camera_index)
+        if ok:
+            self.camera_ready = True
+            self.is_demo = False
+            self.panel.demo_mode.set(False)
+        return ok
 
     def apply_asymmetric_gains(self, gains: Dict[str, float]):
         """Applica i guadagni asimmetrici derivati dalla calibrazione ROM a 5 punti."""
