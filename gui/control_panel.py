@@ -1010,12 +1010,21 @@ class ControlPanel:
         roll: float = 0.0,
         is_fatigued: bool = False,
         fatigue_reason: str = "Nessuna",
+        is_copilot: bool = False,
     ):
-        """Aggiorna tutti i componenti visivi, il radar posturale e il monitor ergonomico."""
+        """Aggiorna tutti i componenti visivi, il radar posturale, il monitor ergonomico e il co-pilot."""
         self.lbl_fps_footer.configure(text=f"FPS: {fps:.1f}")
 
         # Aggiornamento Banner di Sicurezza e Tasto Master
-        if is_paused:
+        if is_copilot:
+            self.pill_status.configure(text="🤝 CO-PILOT (Caregiver)", text_color="#38bdf8")
+            self.safety_banner.configure(fg_color=("#e0f2fe", "#0c4a6e"), border_color="#0284c7")
+            self.lbl_safety_status.configure(
+                text="🤝 CO-PILOT: Intervento Caregiver Rilevato\nIl mouse USB fisico ha la precedenza. Tracciamento in pausa di cortesia.",
+                text_color=("#0369a1", "#38bdf8"),
+            )
+            self.btn_master_toggle.configure(text="⏸ SOSPENDI PAUSA (F9)", fg_color="#d97706", hover_color="#b45309")
+        elif is_paused:
             self.pill_status.configure(text="⏸ STANDBY (Cursore libero)", text_color="#f59e0b")
             self.safety_banner.configure(fg_color=("#fef3c7", "#1e293b"), border_color="#d97706")
             self.lbl_safety_status.configure(

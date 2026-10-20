@@ -19,7 +19,9 @@ from typing import Any, Dict, Optional, Tuple
 import customtkinter as ctk
 
 from core.acoustic_trigger import AcousticTrigger
+from core.ballistics import BallisticTransfer
 from core.camera_worker import CameraWorker
+from core.copilot import CaregiverCoPilot
 from core.dsp_filter import PointFilter2D
 from core.dwell_clicker import DwellClicker
 from core.ergonomics import ErgonomicsMonitor
@@ -97,6 +99,17 @@ class SteadyMotionApp:
         # Monitor Ergonomico & Rilevamento Affaticamento Muscolare Cervicale
         self.ergonomics_monitor = ErgonomicsMonitor()
 
+        # Funzione di Trasferimento Balistica Non-Lineare (Fitts's Law gamma=1.25)
+        self.ballistics = BallisticTransfer(gamma=1.25, is_enabled=True)
+
+        # Caregiver Co-Pilot (Arbitraggio Mouse Fisico USB)
+        self.copilot = CaregiverCoPilot(
+            threshold_px=24.0,
+            pause_duration=2.0,
+            on_override_start=self._on_copilot_start,
+            on_override_end=self._on_copilot_end,
+        )
+
         # Camera Worker (Triple Buffering, Buffer=1, FourCC MJPG, 60 FPS, Event-Driven)
         self.camera = CameraWorker(
             camera_index=0,
@@ -152,10 +165,20 @@ class SteadyMotionApp:
         self.shared_hud_dirty: bool = False
         self.shared_is_fatigued: bool = False
         self.shared_fatigue_reason: str = "Nessuna"
+        self.shared_is_copilot: bool = False
 
         # Stato tasti globali
         self.prev_f12 = False
         self.prev_f9 = False
+
+    def _on_copilot_start(self):
+        """Notifica acustica e disarmo temporaneo per intervento fisico caregiver."""
+        self.audio_feedback.play("pause")
+        self.hud.hide()
+
+    def _on_copilot_end(self):
+        """Ripristino del controllo cefalico dopo l'intervento del caregiver."""
+        self.audio_feedback.play("resume")
 
     def toggle_demo(self, enabled: bool):
         """Attiva o disattiva la modalità demo di simulazione cefalica."""
@@ -276,6 +299,16 @@ class SteadyMotionApp:
             self.acoustic.update_params(enabled=self.acoustic.is_enabled, threshold=float(value))
         elif param_name == "audio_feedback_enabled":
             self.audio_feedback.set_enabled(bool(value))
+        elif param_name == "gamma":
+            self.ballistics.update_params(gamma=float(value), is_enabled=self.ballistics.is_enabled)
+        elif param_name == "ballistics_enabled":
+            self.ballistics.update_params(gamma=self.ballistics.gamma, is_enabled=bool(value))
+        elif param_name == "copilot_enabled":
+            self.copilot.is_enabled = bool(value)
+        elif param_name == "hud_theme":
+            self.hud.set_theme(str(value))
+        elif param_name == "hud_size":
+            self.hud.set_size(int(value))
 
     def _on_dwell_click(self, action: str, x: int, y: int):
         if self.is_paused:
@@ -396,20 +429,21 @@ class SteadyMotionApp:
                 roll = 2.0 * math.sin(sim_t * 0.5)
 
                 if not self.is_paused:
-                    dx = raw_x - 0.5
-                    dy = raw_y - 0.5
-                    gx = self.gain_x_left if dx < 0.0 else self.gain_x_right
-                    gy = self.gain_y_up if dy < 0.0 else self.gain_y_down
-
-                    norm_x = max(0.0, min(1.0, 0.5 + dx * gx))
-                    norm_y = max(0.0, min(1.0, 0.5 + dy * gy))
+                    norm_x, norm_y = self.ballistics.compute_normalized_xy(
+                        raw_x, raw_y, self.gain_x_left, self.gain_x_right, self.gain_y_up, self.gain_y_down
+                    )
 
                     target_px = self.mouse.vx + norm_x * self.mouse.vw
                     target_py = self.mouse.vy + norm_y * self.mouse.vh
 
                     filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_now)
-                    self.mouse.move_to_pixel(filt_x, filt_y)
-                    self.dwell_clicker.update(filt_x, filt_y, t_now)
+
+                    act_x, act_y = self.mouse.get_cursor_pos()
+                    is_overridden = self.copilot.check_override(act_x, act_y, t_now)
+                    if not is_overridden:
+                        self.mouse.move_to_pixel(filt_x, filt_y)
+                        self.copilot.record_injection(filt_x, filt_y)
+                        self.dwell_clicker.update(filt_x, filt_y, t_now)
 
                 with self.telemetry_lock:
                     self.shared_fps = loop_fps
@@ -420,6 +454,7 @@ class SteadyMotionApp:
                     self.shared_roll = roll
                     self.shared_raw_x = raw_x
                     self.shared_raw_y = raw_y
+                    self.shared_is_copilot = self.copilot.is_currently_overridden
 
                 time.sleep(0.016)
                 continue
@@ -449,20 +484,21 @@ class SteadyMotionApp:
 
                 # Iniezione mouse e Clic a sosta eseguiti SOLO se armato (non in pausa)
                 if face_detected and not is_blinking and not self.is_paused:
-                    dx = raw_x - 0.5
-                    dy = raw_y - 0.5
-                    gx = self.gain_x_left if dx < 0.0 else self.gain_x_right
-                    gy = self.gain_y_up if dy < 0.0 else self.gain_y_down
-
-                    norm_x = max(0.0, min(1.0, 0.5 + dx * gx))
-                    norm_y = max(0.0, min(1.0, 0.5 + dy * gy))
+                    norm_x, norm_y = self.ballistics.compute_normalized_xy(
+                        raw_x, raw_y, self.gain_x_left, self.gain_x_right, self.gain_y_up, self.gain_y_down
+                    )
 
                     target_px = self.mouse.vx + norm_x * self.mouse.vw
                     target_py = self.mouse.vy + norm_y * self.mouse.vh
 
                     filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_now)
-                    self.mouse.move_to_pixel(filt_x, filt_y)
-                    self.dwell_clicker.update(filt_x, filt_y, t_now)
+
+                    act_x, act_y = self.mouse.get_cursor_pos()
+                    is_overridden = self.copilot.check_override(act_x, act_y, t_now)
+                    if not is_overridden:
+                        self.mouse.move_to_pixel(filt_x, filt_y)
+                        self.copilot.record_injection(filt_x, filt_y)
+                        self.dwell_clicker.update(filt_x, filt_y, t_now)
 
             with self.telemetry_lock:
                 self.shared_fps = self.camera.actual_fps if self.camera.actual_fps > 0 else loop_fps
@@ -506,9 +542,10 @@ class SteadyMotionApp:
             hy = self.shared_hud_y
             is_fatigued = self.shared_is_fatigued
             fatigue_reason = self.shared_fatigue_reason
+            is_copilot = self.shared_is_copilot
             self.shared_hud_dirty = False
 
-        if self.is_paused or not self.dwell_clicker.is_enabled:
+        if self.is_paused or is_copilot or not self.dwell_clicker.is_enabled:
             self.hud.hide()
         elif hud_dirty:
             self.hud.show_progress(progress, hx, hy)
@@ -526,6 +563,7 @@ class SteadyMotionApp:
             roll=roll,
             is_fatigued=is_fatigued,
             fatigue_reason=fatigue_reason,
+            is_copilot=is_copilot,
         )
 
         self.root.after(33, self._gui_update_loop)

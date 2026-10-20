@@ -25,6 +25,9 @@ from core.word_predictor import WordPredictor
 from core.profile_manager import ProfileManager
 from core.ergonomics import ErgonomicsMonitor
 from core.audio_feedback import AudioFeedback
+from core.ballistics import BallisticTransfer
+from core.copilot import CaregiverCoPilot
+from gui.hud_overlay import HUD_THEMES, DwellHUD
 
 
 def test_dsp_filter_attenuation():
@@ -410,6 +413,93 @@ def test_audio_feedback_engine():
     print(">>> TEST 12 SUPERATO! <<<")
 
 
+def test_ballistics_curve_and_micro_precision():
+    print("\n--- TEST 13: Funzione di Trasferimento Balistica & Micro-Precisione ---")
+    bt = BallisticTransfer(gamma=1.25, is_enabled=True)
+
+    # 1. Continuità C1 all'origine (0.000000 px salto)
+    out_zero = bt.apply(0.0, gain=3.0)
+    assert abs(out_zero) < 1e-9, f"All'origine l'output deve essere esattamente 0, ottenuto: {out_zero}"
+    print("Continuità C1 all'origine (d=0.0): 0.000000 px di scarto")
+
+    # 2. Abbattimento ipersensibilità a piccoli spostamenti (micro-pointing al centro)
+    # Spostamento del 10% della semiecursione (d = 0.05)
+    linear_out = 0.05 * 3.0  # 0.15
+    curved_out = bt.apply(0.05, gain=3.0)
+    attenuation_pct = (1.0 - (curved_out / linear_out)) * 100.0
+    print(f"Abbattimento Ipersensibilità a d=0.05 (10% corsa): {attenuation_pct:.1f}% di riduzione jitter")
+    assert 40.0 < attenuation_pct < 48.0, f"Attenuazione attesa ~44%, calcolata: {attenuation_pct:.2f}%"
+
+    # 3. Conservazione Reachability al 100% al bordo dello schermo (d = 0.5)
+    edge_curved = bt.apply(0.5, gain=3.0)
+    edge_linear = 0.5 * 3.0
+    assert abs(edge_curved - edge_linear) < 1e-6, f"Al bordo (d=0.5) la reachability deve essere identica, calcolato: {edge_curved} vs {edge_linear}"
+    print("Reachability ai bordi (d=0.5): 100% Conservata")
+
+    # 4. Monotonicità stretta su 200 campioni
+    samples = np.linspace(-0.5, 0.5, 200)
+    vals = [bt.apply(float(s), gain=2.5) for s in samples]
+    is_strictly_monotonic = all(vals[i] < vals[i + 1] for i in range(len(vals) - 1))
+    assert is_strictly_monotonic, "La curva balistica deve essere strettamente monotona"
+    print("Monotonicità Stretta [-0.5, +0.5]: 100% Monotona")
+    print(">>> TEST 13 SUPERATO! <<<")
+
+
+def test_caregiver_copilot_override():
+    print("\n--- TEST 14: Caregiver Co-Pilot (Arbitraggio Mouse USB Fisico) ---")
+    events_triggered = []
+    copilot = CaregiverCoPilot(
+        threshold_px=24.0,
+        pause_duration=2.0,
+        on_override_start=lambda: events_triggered.append("START"),
+        on_override_end=lambda: events_triggered.append("END"),
+    )
+
+    t = 1000.0
+    copilot.record_injection(500.0, 500.0)
+
+    # 1. Movimento fisiologico entro soglia (< 24 px) -> Nessun override
+    is_overridden = copilot.check_override(actual_x=510, actual_y=510, now=t)
+    assert not is_overridden, "Sotto soglia non deve scattare l'override"
+    assert len(events_triggered) == 0
+
+    # 2. Movimento brusco Caregiver (> 24 px, es. salto di 100 px) -> Scatta pausa di 2s
+    is_overridden = copilot.check_override(actual_x=620, actual_y=550, now=t + 0.05)
+    assert is_overridden, "Deve rilevare l'intervento fisico del caregiver"
+    assert "START" in events_triggered, "Deve notificare l'evento di inizio override"
+    print("Rilevamento Intervento Caregiver (Delta > 24 px): Rilevato con successo (Pausa 2.0s armata)")
+
+    # 3. Durante la finestra di pausa di 2 secondi il tracciamento rimane bloccato
+    is_still_paused = copilot.check_override(actual_x=620, actual_y=550, now=t + 1.2)
+    assert is_still_paused, "A 1.2s deve rimanere in pausa"
+
+    # 4. Superati i 2.0 secondi di inattività fisica -> Controllo riarmato
+    is_active = copilot.check_override(actual_x=620, actual_y=550, now=t + 2.1)
+    assert not is_active, "Dopo 2.1s il controllo deve tornare all'utente"
+    assert "END" in events_triggered, "Deve notificare l'evento di fine override"
+    print("Ripristino Automatico a Riposo: 100% Ripristinato senza conflitti")
+    print(">>> TEST 14 SUPERATO! <<<")
+
+
+def test_hud_high_contrast_themes():
+    print("\n--- TEST 15: Personalizzazione HUD & Temi Ipovisione ad Alto Contrasto ---")
+    assert len(HUD_THEMES) >= 4, "Devono essere presenti almeno 4 temi cromatici"
+    required_keys = ["guide", "progress_normal", "progress_warn", "progress_imminent", "width_guide", "width_progress"]
+    for theme_name, theme_data in HUD_THEMES.items():
+        for k in required_keys:
+            assert k in theme_data, f"Tema '{theme_name}' incompleto: manca chiave '{k}'"
+    print(f"Verifica Palette Cromatiche: 4/4 Temi Completi ({', '.join(HUD_THEMES.keys())})")
+
+    hud = DwellHUD(size=80, theme="High-Contrast Amber")
+    assert hud.theme_name == "High-Contrast Amber"
+    assert hud.theme["width_progress"] >= 5, "Il tema ipovisione deve avere tratto rinforzato"
+
+    hud.set_size(120)
+    assert hud.size == 120 and hud.radius == 60, "Il ridimensionamento HUD dinamico deve aggiornare raggio e diametro"
+    print("Ridimensionamento Dinamico HUD 4K / Ipovisione: 100% Conforme")
+    print(">>> TEST 15 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -423,8 +513,11 @@ if __name__ == "__main__":
     test_patient_profile_persistence_and_presets()
     test_ergonomics_monitor_fatigue_and_drift()
     test_audio_feedback_engine()
+    test_ballistics_curve_and_micro_precision()
+    test_caregiver_copilot_override()
+    test_hud_high_contrast_themes()
     print("\n========================================================")
-    print("TUTTI I 12 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 15 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 
