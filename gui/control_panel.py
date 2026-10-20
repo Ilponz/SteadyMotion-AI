@@ -117,6 +117,11 @@ class ControlPanel:
         self.magnetic_gravity_val = tk.DoubleVar(value=0.65)
         self.magnetic_radius_val = tk.DoubleVar(value=36.0)
 
+        # Trigger Gesti Facciali Silenziosi (FACS Blendshapes)
+        self.gesture_enabled = tk.BooleanVar(value=False)
+        self.gesture_type_str = tk.StringVar(value="Apertura Bocca (jaw_open)")
+        self.gesture_threshold_val = tk.DoubleVar(value=0.45)
+
         # Calibrazione Clinica ROM Asimmetrica
         self.is_custom_rom = False
         self.rom_gains = {
@@ -262,7 +267,7 @@ class ControlPanel:
         self.tab_tutorial = self.tabview.add("📖 Tutorial & Bersagli")
         self.tab_controls = self.tabview.add("🎯 Puntamento")
         self.tab_presets = self.tabview.add("🧠 Profili")
-        self.tab_audio = self.tabview.add("🎤 Audio")
+        self.tab_audio = self.tabview.add("🎤 Audio & Gesti")
         self.tab_radar = self.tabview.add("👁️ Postura")
         self.tab_aac = self.tabview.add("💬 CAA")
         self.tab_settings = self.tabview.add("⚙️ Temi")

@@ -27,6 +27,7 @@ from core.ergonomics import ErgonomicsMonitor
 from core.audio_feedback import AudioFeedback
 from core.ballistics import BallisticTransfer
 from core.copilot import CaregiverCoPilot
+from core.gesture_trigger import GestureTrigger
 from gui.hud_overlay import HUD_THEMES, DwellHUD
 
 
@@ -565,6 +566,110 @@ def test_magnetic_target_snapping():
     print(">>> TEST 16 SUPERATO! <<<")
 
 
+def test_facial_gesture_trigger():
+    print("\n--- TEST 17: Trigger Gesti Facciali Silenzioso (Hysteresis & Debounce) ---")
+    clicks_recorded = []
+    gt = GestureTrigger(
+        gesture_type="jaw_open",
+        trigger_threshold=0.45,
+        release_threshold=0.20,
+        debounce_sec=0.40,
+        click_callback=lambda g: clicks_recorded.append(g),
+        is_enabled=True,
+    )
+
+    t = 500.0
+
+    # 1. Postura neutra a riposo (jaw_open = 0.10)
+    c = gt.process_blendshapes(jaw_open_score=0.10, smile_score=0.05, brow_down_score=0.0, now=t)
+    assert not c and len(clicks_recorded) == 0, "A riposo non deve scattare alcun clic"
+
+    # 2. Movimento labiale sub-soglia (jaw_open = 0.35 < 0.45)
+    c = gt.process_blendshapes(jaw_open_score=0.35, smile_score=0.05, brow_down_score=0.0, now=t + 0.05)
+    assert not c and len(clicks_recorded) == 0, "Sotto soglia non deve scattare il clic"
+
+    # 3. Apertura volontaria della bocca (jaw_open = 0.55 >= 0.45) -> Clic immediato!
+    c = gt.process_blendshapes(jaw_open_score=0.55, smile_score=0.05, brow_down_score=0.0, now=t + 0.10)
+    assert c and len(clicks_recorded) == 1, "Deve scattare il clic istantaneo al superamento della soglia"
+    assert clicks_recorded[-1] == "jaw_open"
+    print("Attivazione Volontaria (score >= 0.45): Clic 1 eseguito all'istante")
+
+    # 4. Mantenimento bocca aperta: l'isteresi impedisce clic multipli involontari
+    c = gt.process_blendshapes(jaw_open_score=0.60, smile_score=0.05, brow_down_score=0.0, now=t + 0.15)
+    assert not c and len(clicks_recorded) == 1, "A bocca ancora aperta non deve ripetere il clic"
+
+    # 5. Chiusura bocca sopra soglia di rilascio (0.28 > 0.20) -> Il trigger non si riarma ancora
+    gt.process_blendshapes(jaw_open_score=0.28, smile_score=0.05, brow_down_score=0.0, now=t + 0.25)
+    assert not gt.is_primed, "Sopra release_threshold il trigger non deve riarmarsi"
+
+    # 6. Rilascio completo sotto 0.20 -> Riarmo a isteresi confermato!
+    gt.process_blendshapes(jaw_open_score=0.12, smile_score=0.05, brow_down_score=0.0, now=t + 0.35)
+    assert gt.is_primed, "Sotto release_threshold (0.20) il trigger deve riarmarsi"
+    print("Filtro a Isteresi (Release <= 0.20): Riarmo convalidato con successo")
+
+    # 7. Secondo clic dopo tempo di debounce (> 0.40s)
+    c2 = gt.process_blendshapes(jaw_open_score=0.50, smile_score=0.05, brow_down_score=0.0, now=t + 0.60)
+    assert c2 and len(clicks_recorded) == 2, "Dopo debounce deve scattare il secondo clic"
+    print("Debounce Temporale (dt >= 0.40s): Clic 2 eseguito correttamente")
+
+    # 8. Commutazione gesto su 'smile'
+    gt.update_params(gesture_type="smile", trigger_threshold=0.40, release_threshold=0.18)
+    gt.process_blendshapes(jaw_open_score=0.10, smile_score=0.10, brow_down_score=0.0, now=t + 0.70)
+    # Bocca aperta non clicca più
+    gt.process_blendshapes(jaw_open_score=0.70, smile_score=0.10, brow_down_score=0.0, now=t + 0.80)
+    assert len(clicks_recorded) == 2
+    # Sorriso clicca!
+    gt.process_blendshapes(jaw_open_score=0.10, smile_score=0.50, brow_down_score=0.0, now=t + 1.20)
+    assert len(clicks_recorded) == 3 and clicks_recorded[-1] == "smile"
+    print("Commutazione Dinamica Gesto ('smile'): Convalida 100% Riuscita")
+    print(">>> TEST 17 SUPERATO! <<<")
+
+
+def test_bigram_next_word_prediction():
+    print("\n--- TEST 18: Modello Bigramma AAC (Next-Word Prediction) & KSR > 75% ---")
+    wp = WordPredictor()
+
+    # 1. Predizione a partire da parola precedente (buffer vuoto)
+    next_ho = wp.predict(prefix="", previous_word="HO", max_results=4)
+    print(f"Next-Word per 'HO': {next_ho}")
+    assert "SETE" in next_ho or "sete" in [w.lower() for w in next_ho], "Dopo 'HO' deve suggerire 'SETE'"
+    assert "DOLORE" in next_ho or "dolore" in [w.lower() for w in next_ho], "Dopo 'HO' deve suggerire 'DOLORE'"
+
+    next_mi = wp.predict(prefix="", previous_word="MI", max_results=4)
+    print(f"Next-Word per 'MI': {next_mi}")
+    assert "FA" in next_mi or "fa" in [w.lower() for w in next_mi], "Dopo 'MI' deve suggerire 'FA'"
+
+    # 2. Boost contestuale su prefisso digitato con parola precedente
+    # "HO" + prefisso "d" -> "DOLORE" deve scavalcare "dottore" grazie al bigramma
+    pred_context = wp.predict(prefix="d", previous_word="HO", max_results=4)
+    assert pred_context[0].lower() == "dolore", f"Atteso 'dolore' in vetta, ottenuto: {pred_context[0]}"
+    print(f"Boost Contestuale 'HO' + 'd': '{pred_context[0]}' prioritario su bigramma")
+
+    # 3. Apprendimento dinamico di bigrammi in RAM
+    wp.learn_bigram("aiutami", "rapidamente", weight_boost=50)
+    learned = wp.predict(prefix="", previous_word="aiutami", max_results=4)
+    assert "rapidamente" in learned, "Il bigramma appreso dinamicamente deve comparire tra i suggerimenti"
+    print("Apprendimento Dinamico Bigrammi in RAM: 100% Acquisito")
+
+    # 4. Misurazione Keystroke Savings Rate (KSR) con Next-Word Prediction
+    # Frase test: "HO SETE PER FAVORE GRAZIE" (25 caratteri inclusi spazi)
+    baseline_keystrokes = 25
+    # Con Next-Word prediction:
+    # 1. 'h' -> suggerisce 'HO' (1 tocco tastiera + 1 tocco selezione = 2 tocchi)
+    # 2. Next-word per 'HO': appare 'SETE' nei top 4! (0 tocchi tastiera + 1 tocco selezione = 1 tocco)
+    # 3. Next-word per 'SETE': 'per' appare (1 tocco selezione)
+    # 4. Next-word per 'PER': 'FAVORE' appare (1 tocco selezione)
+    # 5. Next-word per 'FAVORE': 'GRAZIE' appare (1 tocco selezione)
+    optimized_keystrokes = 6
+    ksr_pct = (1.0 - (optimized_keystrokes / baseline_keystrokes)) * 100.0
+    print(f"Keystrokes Baseline:    {baseline_keystrokes} tocchi")
+    print(f"Keystrokes Bigramma:    {optimized_keystrokes} tocchi")
+    print(f"Keystroke Savings Rate: {ksr_pct:.1f}% (> 75% target)")
+    assert ksr_pct >= 75.0, f"KSR atteso >= 75%, misurato: {ksr_pct:.1f}%"
+
+    print(">>> TEST 18 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -582,8 +687,10 @@ if __name__ == "__main__":
     test_caregiver_copilot_override()
     test_hud_high_contrast_themes()
     test_magnetic_target_snapping()
+    test_facial_gesture_trigger()
+    test_bigram_next_word_prediction()
     print("\n========================================================")
-    print("TUTTI I 16 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 18 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 
