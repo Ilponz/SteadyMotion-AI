@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('C:/Users/alex.ponzin/Documents/Progetto SteadyMotion/models/face_landmarker.task', 'models')]
+datas = [('C:\\Users\\manue\\Documents\\Progetto SteadyMotion\\models\\face_landmarker.task', 'models')]
 binaries = []
 hiddenimports = ['mediapipe', 'mediapipe.tasks', 'mediapipe.tasks.python', 'mediapipe.tasks.python.vision', 'sounddevice', '_cffi_backend', 'cv2', 'darkdetect']
 tmp_ret = collect_all('customtkinter')
@@ -9,7 +9,7 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
-    ['C:/Users/alex.ponzin/Documents/Progetto SteadyMotion/main.py'],
+    ['C:\\Users\\manue\\Documents\\Progetto SteadyMotion\\main.py'],
     pathex=[],
     binaries=binaries,
     datas=datas,
