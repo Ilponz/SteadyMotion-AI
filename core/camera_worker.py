@@ -211,3 +211,28 @@ class CameraWorker:
             self.cap.release()
             self.cap = None
         self._frame_ready = False
+
+    def switch_camera(self, new_camera_index: int) -> bool:
+        """
+        Commuta la sorgente di acquisizione a caldo su un nuovo indice webcam.
+        Thread-safe, rilascia la webcam precedente e riavvia la pipeline.
+        """
+        self.stop()
+        self.camera_index = int(new_camera_index)
+        return self.start()
+
+    @staticmethod
+    def get_available_cameras(max_probe: int = 4) -> list:
+        """Sonda rapidamente gli indici video del sistema per rilevare le webcam collegate."""
+        available = []
+        for idx in range(max_probe):
+            cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                available.append(idx)
+                cap.release()
+            else:
+                cap_m = cv2.VideoCapture(idx, cv2.CAP_MSMF)
+                if cap_m.isOpened():
+                    available.append(idx)
+                    cap_m.release()
+        return available

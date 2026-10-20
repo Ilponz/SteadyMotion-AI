@@ -44,6 +44,9 @@ SM_CYVIRTUALSCREEN = 79
 # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (-4)
 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
 
+# Watermark identificativo per iniezioni SteadyMotion (ASCII 'STEA')
+STEADYMOTION_INPUT_SIGNATURE = 0x53544541
+
 ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
 
 
@@ -142,13 +145,13 @@ class WindowsMouseController:
 
     def __init__(self):
         enable_high_precision_timer()
+        self.signature_extra = ULONG_PTR(STEADYMOTION_INPUT_SIGNATURE)
         self.refresh_screen_metrics()
         self.is_dragging = False
 
         # Pre-allocazione statica della struct per SendInput a zero heap churn
-        extra = ULONG_PTR(0)
         flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
-        mi = MOUSEINPUT(0, 0, 0, flags, 0, extra)
+        mi = MOUSEINPUT(0, 0, 0, flags, 0, self.signature_extra)
         self._move_input = INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=mi))
         self._move_byref = ctypes.byref(self._move_input)
         self._input_size = ctypes.sizeof(INPUT)
@@ -168,6 +171,31 @@ class WindowsMouseController:
             self.vy = 0.0
             self.vw = float(user32.GetSystemMetrics(SM_CXSCREEN))
             self.vh = float(user32.GetSystemMetrics(SM_CYSCREEN))
+
+    def check_screen_metrics_changed(self) -> bool:
+        """
+        Verifica se la topologia o risoluzione del display è cambiata a caldo (hotplug HDMI / scaling).
+        Se rileva variazioni, sincronizza automaticamente le coordinate virtuali.
+        """
+        cur_vx = float(user32.GetSystemMetrics(SM_XVIRTUALSCREEN))
+        cur_vy = float(user32.GetSystemMetrics(SM_YVIRTUALSCREEN))
+        cur_vw = float(user32.GetSystemMetrics(SM_CXVIRTUALSCREEN))
+        cur_vh = float(user32.GetSystemMetrics(SM_CYVIRTUALSCREEN))
+
+        if cur_vw <= 0 or cur_vh <= 0:
+            cur_vx = 0.0
+            cur_vy = 0.0
+            cur_vw = float(user32.GetSystemMetrics(SM_CXSCREEN))
+            cur_vh = float(user32.GetSystemMetrics(SM_CYSCREEN))
+
+        if (cur_vx != self.vx or cur_vy != self.vy or
+                cur_vw != self.vw or cur_vh != self.vh):
+            self.vx = cur_vx
+            self.vy = cur_vy
+            self.vw = cur_vw
+            self.vh = cur_vh
+            return True
+        return False
 
     def move_to_pixel(self, x: float, y: float):
         """
@@ -198,7 +226,7 @@ class WindowsMouseController:
 
     def click(self, button: str = "left"):
         """Esegue un clic completo atomico Down + Up."""
-        extra = ULONG_PTR(0)
+        extra = self.signature_extra
         if button == "left":
             down_flag, up_flag = MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP
         elif button == "right":
@@ -228,7 +256,7 @@ class WindowsMouseController:
         threading.Thread(target=_delayed_second_click, daemon=True, name="AsyncDoubleClick").start()
 
     def mouse_down(self, button: str = "left"):
-        extra = ULONG_PTR(0)
+        extra = self.signature_extra
         down_flag = MOUSEEVENTF_LEFTDOWN if button == "left" else MOUSEEVENTF_RIGHTDOWN
         mi = MOUSEINPUT(0, 0, 0, down_flag, 0, extra)
         inp = INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=mi))
@@ -236,7 +264,7 @@ class WindowsMouseController:
         self.is_dragging = True
 
     def mouse_up(self, button: str = "left"):
-        extra = ULONG_PTR(0)
+        extra = self.signature_extra
         up_flag = MOUSEEVENTF_LEFTUP if button == "left" else MOUSEEVENTF_RIGHTUP
         mi = MOUSEINPUT(0, 0, 0, up_flag, 0, extra)
         inp = INPUT(type=INPUT_MOUSE, union=_INPUTunion(mi=mi))
@@ -251,7 +279,7 @@ class WindowsMouseController:
 
     def scroll(self, clicks: int):
         """Esegue uno scroll della rotellina del mouse (positivo = su, negativo = giù)."""
-        extra = ULONG_PTR(0)
+        extra = self.signature_extra
         # 120 corrisponde a 1 tacca standard di rotellina in Windows (WHEEL_DELTA)
         wheel_delta = int(clicks * 120)
         mi = MOUSEINPUT(0, 0, wheel_delta, MOUSEEVENTF_WHEEL, 0, extra)
@@ -260,7 +288,7 @@ class WindowsMouseController:
 
     def send_unicode_char(self, char: str):
         """Invia caratteri Unicode direttamente alla finestra Windows attiva."""
-        extra = ULONG_PTR(0)
+        extra = self.signature_extra
         KEYEVENTF_KEYUP = 0x0002
         KEYEVENTF_UNICODE = 0x0004
         for c in char:
@@ -276,7 +304,7 @@ class WindowsMouseController:
 
     def send_key_event(self, vk_code: int):
         """Invia codici di tasto virtuale (es. VK_BACK, VK_RETURN, VK_SPACE)."""
-        extra = ULONG_PTR(0)
+        extra = self.signature_extra
         KEYEVENTF_KEYUP = 0x0002
         ki_down = KEYBDINPUT(vk_code, 0, 0, 0, extra)
         inp_down = INPUT(type=1, union=_INPUTunion(ki=ki_down))

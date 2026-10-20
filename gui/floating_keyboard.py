@@ -12,10 +12,11 @@ Progettata specificamente per pazienti con disabilità motorie gravi:
 import os
 import threading
 import tkinter as tk
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import customtkinter as ctk
 
 from core.word_predictor import WordPredictor
+from core.phrasebook import PhrasebookManager
 
 try:
     import win32com.client
@@ -54,6 +55,10 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         # Motore Predittivo Intelligente (AAC Word Predictor)
         self.word_predictor = WordPredictor()
         self.sug_buttons: List[ctk.CTkButton] = []
+
+        # Prontuario Frasi Clinico e Personalizzabile AAC
+        self.phrasebook = PhrasebookManager()
+        self.current_aac_category = tk.StringVar(value="BISOGNI_PRIMARI")
 
         self.direct_injection = tk.BooleanVar(value=True)
         self.typed_text = tk.StringVar(value="")
@@ -284,32 +289,85 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         btn_bksp.pack(side="left", fill="both", padx=2)
 
     def _build_aac_tab(self):
-        phrases = [
-            "SÌ", "NO", "AIUTO!",
-            "HO SETE", "HO FAME", "GRAZIE",
-            "CHIAMAMI", "HO DOLORE", "ASPETTA",
-            "HO FREDDO", "HO CALDO", "VOGLIO DORMIRE"
-        ]
+        """Costruisce la scheda Prontuario Frasi AAC con selettore categorie e griglia dinamica."""
+        # 1. Barra di selezione categoria
+        cat_bar = ctk.CTkFrame(self.tab_aac, fg_color="transparent")
+        cat_bar.pack(fill="x", padx=4, pady=(2, 4))
 
-        grid = ctk.CTkFrame(self.tab_aac, fg_color="transparent")
-        grid.pack(fill="both", expand=True, padx=4, pady=4)
+        categories = self.phrasebook.get_categories()
+        cat_labels = {
+            "BISOGNI_PRIMARI": "🚨 Bisogni",
+            "SALUTE_ASSISTENZA": "🩺 Assistenza",
+            "COMUNICAZIONE_SOCIALE": "💬 Sociale",
+            "POSTURA_COMFORT": "🛏 Comfort",
+        }
+        self._cat_display_map = cat_labels
+
+        display_values = [cat_labels.get(c, c) for c in categories]
+        initial_val = cat_labels.get(self.current_aac_category.get(), self.current_aac_category.get())
+
+        self.cat_segmented = ctk.CTkSegmentedButton(
+            cat_bar,
+            values=display_values,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            selected_color="#6366F1",
+            selected_hover_color="#4F46E5",
+            unselected_color="#1E293B",
+            unselected_hover_color="#334155",
+            command=self._on_aac_category_changed,
+        )
+        self.cat_segmented.set(initial_val)
+        self.cat_segmented.pack(fill="x", expand=True)
+
+        # 2. Contenitore griglia pulsanti frasi
+        self.aac_grid_frame = ctk.CTkFrame(self.tab_aac, fg_color="transparent")
+        self.aac_grid_frame.pack(fill="both", expand=True, padx=4, pady=2)
+
+        self._render_aac_phrases()
+
+    def _on_aac_category_changed(self, display_name: str):
+        """Gestisce il cambio categoria AAC."""
+        for cat_key, d_name in self._cat_display_map.items():
+            if d_name == display_name:
+                self.current_aac_category.set(cat_key)
+                break
+        else:
+            self.current_aac_category.set(display_name)
+        self._render_aac_phrases()
+
+    def _render_aac_phrases(self):
+        """Rigenera la griglia dei pulsanti per la categoria attiva."""
+        for widget in self.aac_grid_frame.winfo_children():
+            widget.destroy()
+
+        cat = self.current_aac_category.get()
+        phrases = self.phrasebook.get_phrases(cat)
+        if not phrases:
+            lbl = ctk.CTkLabel(
+                self.aac_grid_frame,
+                text="Nessuna frase disponibile in questa categoria.",
+                font=ctk.CTkFont(family="Segoe UI", size=13),
+                text_color="#94A3B8",
+            )
+            lbl.pack(expand=True)
+            return
 
         cols = 3
         for idx, phrase in enumerate(phrases):
             r = idx // cols
             c = idx % cols
             btn = ctk.CTkButton(
-                grid,
+                self.aac_grid_frame,
                 text=phrase,
-                font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
                 fg_color="#1E293B",
                 hover_color="#8B5CF6",
-                height=42,
+                height=40,
                 command=lambda p=phrase: self._handle_phrase_click(p),
             )
             btn.grid(row=r, column=c, padx=3, pady=3, sticky="nsew")
-            grid.grid_columnconfigure(c, weight=1)
-            grid.grid_rowconfigure(r, weight=1)
+            self.aac_grid_frame.grid_columnconfigure(c, weight=1)
+            self.aac_grid_frame.grid_rowconfigure(r, weight=1)
 
     def _handle_char_click(self, char: str):
         # 1. Aggiorna buffer locale

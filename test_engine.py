@@ -28,6 +28,7 @@ from core.audio_feedback import AudioFeedback
 from core.ballistics import BallisticTransfer
 from core.copilot import CaregiverCoPilot
 from core.gesture_trigger import GestureTrigger
+from core.phrasebook import PhrasebookManager
 from gui.hud_overlay import HUD_THEMES, DwellHUD
 
 
@@ -670,6 +671,154 @@ def test_bigram_next_word_prediction():
     print(">>> TEST 18 SUPERATO! <<<")
 
 
+def test_copilot_low_level_hook_and_display_sync():
+    print("\n--- TEST 19: Co-Pilot Hook WH_MOUSE_LL (Watermark 'STEA') & Dynamic Display Sync ---")
+    from core.virtual_input import STEADYMOTION_INPUT_SIGNATURE
+
+    # 1. Verifica Watermark Signature per prevenire auto-conflitti
+    assert STEADYMOTION_INPUT_SIGNATURE == 0x53544541, "La firma deve corrispondere esattamente al codice ASCII 'STEA'"
+    mouse = WindowsMouseController()
+    assert mouse.signature_extra.value == STEADYMOTION_INPUT_SIGNATURE, "Il controller virtuale deve taggare SendInput con il watermark"
+    print("Watermark Iniezione Win32 ('STEA' = 0x53544541): 100% Conforme")
+
+    # 2. Verifica Dynamic Multi-Display Geometry Sync
+    is_changed = mouse.check_screen_metrics_changed()
+    assert not is_changed, "A stato stazionario non devono essere segnalati cambi di topologia"
+    # Simulazione disallineamento a caldo (es. cambio risoluzione o hotplug HDMI)
+    orig_vw = mouse.vw
+    mouse.vw += 150.0
+    detected_change = mouse.check_screen_metrics_changed()
+    assert detected_change, "Deve rilevare il disallineamento della topologia del display"
+    assert mouse.vw == orig_vw, "Il check deve risincronizzare la larghezza reale del desktop virtuale"
+    print("Rilevamento Hotplug & Multi-Display Topology: 100% Risincronizzato a caldo")
+
+    # 3. Verifica Discriminazione Eventi Hardware via Hook WH_MOUSE_LL
+    hook_events = []
+    copilot = CaregiverCoPilot(
+        threshold_px=24.0,
+        pause_duration=2.0,
+        on_override_start=lambda: hook_events.append("START"),
+        on_override_end=lambda: hook_events.append("END"),
+        enable_low_level_hook=False,  # Modalità controllata headless
+    )
+
+    t = 1000.0
+
+    # 3.1 Evento iniettato da SteadyMotion (dwExtraInfo == STEADYMOTION_INPUT_SIGNATURE) -> Nessun falso positivo!
+    is_ovr = copilot.simulate_mouse_hook_event(flags=1, dw_extra_info=STEADYMOTION_INPUT_SIGNATURE, now=t)
+    assert not is_ovr, "Gli input con firma SteadyMotion non devono innescare l'override"
+    assert len(hook_events) == 0, "Nessun evento deve essere scatenato da auto-iniezioni"
+    print("Filtro Auto-Iniezione: 0% Falsi Positivi su input generati da SteadyMotion")
+
+    # 3.2 Evento fisico del Caregiver (anche 0 px di scostamento, es. tocco fisico mouse USB)
+    is_ovr = copilot.simulate_mouse_hook_event(flags=0, dw_extra_info=0, now=t + 0.01)
+    assert is_ovr, "Il tocco fisico del mouse deve innescare istantaneamente il Co-Pilot"
+    assert "START" in hook_events, "Notifica di override immediata"
+    assert copilot.is_currently_overridden, "Lo stato di override deve essere attivo"
+    assert copilot.pause_until >= t + 2.0, "La pausa di cortesia di 2.0s deve essere armata"
+    print("Intercettazione Hardware Istantanea (0 px delta): Pausa 2.0s attivata senza latenza")
+
+    # 3.3 Nel loop a 60 Hz il check_override restituisce True a costo zero
+    t0 = time.perf_counter()
+    for i in range(100):
+        st = copilot.check_override(actual_x=500, actual_y=500, now=t + 1.0)
+        assert st, "Durante la pausa di cortesia il controllo deve rimanere al caregiver"
+    t1 = time.perf_counter()
+    check_ms = (t1 - t0) * 1000.0
+    print(f"Esecuzione 100 verifiche Co-Pilot: {check_ms:.4f} ms ({check_ms * 10.0:.2f} µs/chiamata)")
+    assert check_ms < 0.1, f"Latenza eccessiva: {check_ms:.4f} ms"
+
+    # 3.4 Scadenza dei 2.0s di cortesia: rilascio e ripristino per il paziente
+    st_after = copilot.check_override(actual_x=500, actual_y=500, now=t + 2.1)
+    assert not st_after, "Dopo 2.1s senza tocchi il controllo deve tornare all'utente"
+    assert "END" in hook_events, "Notifica di fine override inviata con successo"
+    print("Ripristino Trasparente al Paziente: 100% Conforme")
+
+    print(">>> TEST 19 SUPERATO! <<<")
+
+
+def test_clinical_phrasebook_manager():
+    print("\n--- TEST 20: Prontuario Clinico Frasi AAC & Persistenza JSON Atomica ---")
+    test_json = "config/test_phrasebook_tmp.json"
+    if os.path.exists(test_json):
+        try:
+            os.remove(test_json)
+        except Exception:
+            pass
+
+    # 1. Inizializzazione con default clinici
+    pm = PhrasebookManager(config_path=test_json)
+    cats = pm.get_categories()
+    print(f"Categorie caricate: {cats}")
+    assert "BISOGNI_PRIMARI" in cats, "Categoria BISOGNI_PRIMARI mancante"
+    assert "SALUTE_ASSISTENZA" in cats, "Categoria SALUTE_ASSISTENZA mancante"
+    assert "COMUNICAZIONE_SOCIALE" in cats, "Categoria COMUNICAZIONE_SOCIALE mancante"
+    assert "POSTURA_COMFORT" in cats, "Categoria POSTURA_COMFORT mancante"
+
+    # 2. Verifica frasi predefinite
+    bisogni = pm.get_phrases("BISOGNI_PRIMARI")
+    assert "HO SETE" in bisogni and "AIUTO" in bisogni, "Frasi di emergenza non trovate"
+    print(f"Frasi in BISOGNI_PRIMARI ({len(bisogni)}): {bisogni[:3]}...")
+
+    # 3. Aggiunta e rimozione frase personalizzata
+    ok_add = pm.add_phrase("BISOGNI_PRIMARI", "VOGLIO ASCOLTARE MUSICA")
+    assert ok_add, "Aggiunta frase fallita"
+    assert "VOGLIO ASCOLTARE MUSICA" in pm.get_phrases("BISOGNI_PRIMARI")
+
+    # Ricerca globale istantanea
+    matches = pm.search_phrases("MUSICA")
+    assert len(matches) == 1 and matches[0][1] == "VOGLIO ASCOLTARE MUSICA"
+    print("Ricerca Globale Istantanea: Trovata frase personalizzata")
+
+    ok_del = pm.remove_phrase("BISOGNI_PRIMARI", "VOGLIO ASCOLTARE MUSICA")
+    assert ok_del, "Rimozione frase fallita"
+    assert "VOGLIO ASCOLTARE MUSICA" not in pm.get_phrases("BISOGNI_PRIMARI")
+
+    # 4. Creazione e rimozione categoria dinamica
+    pm.add_category("TEMPO_LIBERO")
+    pm.add_phrase("TEMPO_LIBERO", "ACCENDI LA TV")
+    assert "TEMPO_LIBERO" in pm.get_categories()
+    assert "ACCENDI LA TV" in pm.get_phrases("TEMPO_LIBERO")
+
+    # 5. Persistenza atomica su disco e reload
+    pm2 = PhrasebookManager(config_path=test_json)
+    assert "TEMPO_LIBERO" in pm2.get_categories()
+    assert "ACCENDI LA TV" in pm2.get_phrases("TEMPO_LIBERO")
+    print("Persistenza Atomica JSON su disco: 100% Bit-Exact e Ricaricata")
+
+    # Pulizia file temporaneo
+    if os.path.exists(test_json):
+        try:
+            os.remove(test_json)
+        except Exception:
+            pass
+
+    print(">>> TEST 20 SUPERATO! <<<")
+
+
+def test_camera_worker_hot_swap():
+    print("\n--- TEST 21: CameraWorker Runtime Hot-Swap & Hardware Probe ---")
+    # 1. Probing rapido degli indici disponibili nel sistema
+    probed = CameraWorker.get_available_cameras(max_probe=2)
+    print(f"Indici webcam rilevati nel sistema: {probed}")
+    assert isinstance(probed, list), "get_available_cameras deve restituire una lista"
+
+    # 2. Istanziazione CameraWorker su indice virtuale
+    worker = CameraWorker(camera_index=0, target_width=640, target_height=480, target_fps=30)
+    assert not worker.is_running, "Worker non deve essere attivo prima di start()"
+    assert hasattr(worker, "switch_camera"), "Metodo switch_camera non trovato"
+
+    # 3. Test chiamata switch_camera (deve gestire transizione di stato senza deadlock)
+    res = worker.switch_camera(new_camera_index=1)
+    assert worker.camera_index == 1, "Indice camera non aggiornato correttamente"
+    print("Transizione Hot-Swap su indice 1: Eseguita in sicurezza (senza eccezioni)")
+
+    worker.stop()
+    assert not worker.is_running
+    print("Chiusura e rilascio pipeline: 100% Pulita")
+    print(">>> TEST 21 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -689,8 +838,11 @@ if __name__ == "__main__":
     test_magnetic_target_snapping()
     test_facial_gesture_trigger()
     test_bigram_next_word_prediction()
+    test_copilot_low_level_hook_and_display_sync()
+    test_clinical_phrasebook_manager()
+    test_camera_worker_hot_swap()
     print("\n========================================================")
-    print("TUTTI I 18 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 21 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

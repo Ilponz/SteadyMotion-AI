@@ -446,10 +446,16 @@ class SteadyMotionApp:
         """
         last_loop_time = time.perf_counter()
         loop_fps = 0.0
+        last_metric_check = 0.0
 
         while self.is_running:
             self._check_global_hotkeys()
             t_now = time.perf_counter()
+
+            # Controllo periodico cambio risoluzione o hotplug multi-monitor ogni 1.5s
+            if t_now - last_metric_check > 1.5:
+                self.mouse.check_screen_metrics_changed()
+                last_metric_check = t_now
 
             face_detected = False
             is_blinking = False
@@ -626,6 +632,7 @@ class SteadyMotionApp:
         if self.tracking_thread and self.tracking_thread.is_alive():
             self.tracking_thread.join(timeout=1.0)
         disable_high_precision_timer()
+        self.copilot.stop_hook()
         self.audio_feedback.stop()
         self.camera.stop()
         self.acoustic.stop()

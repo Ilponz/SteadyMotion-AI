@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (18 su 18 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (21 su 21 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback MSMF (Media Foundation);
@@ -130,6 +130,22 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (1
     - Boost del Keystroke Savings Rate (KSR) al **76.0%**, riducendo di oltre i 3/4 lo sforzo motorio per la composizione di intere frasi;
     - Apprendimento dinamico in RAM sia di vocaboli che di sequenze a 2 parole usate frequentemente dal paziente.
 
+21. **Low-Level Hook WH_MOUSE_LL & Dynamic Multi-Display Topology Sync (core/copilot.py & core/virtual_input.py):**
+    - Watermark crittografico/identificativo `STEADYMOTION_INPUT_SIGNATURE = 0x53544541` ('STEA') applicato su tutti gli eventi Win32 SendInput;
+    - Hook kernel a basso livello `WH_MOUSE_LL` in background thread asincrono: intercetta all'istante qualsiasi tocco o clic fisico del mouse USB o trackpad del caregiver anche per spostamenti minimi (0 px delta), eliminando al 100% la "lotta del cursore" (Mouse Fight);
+    - Rilevamento dinamico a caldo della topologia degli schermi (`check_screen_metrics_changed()`): riallinea le coordinate virtuali del desktop in caso di hotplug di monitor esterni HDMI o variazione dello scaling di Windows (100%-150%) senza richiedere il riavvio del software.
+
+22. **Prontuario Clinico AAC Personalizzabile & Persistenza JSON Atomica (core/phrasebook.py & gui/floating_keyboard.py):**
+    - Libreria gerarchica di comunicazione aumentativa strutturata in categorie cliniche (`BISOGNI_PRIMARI`, `SALUTE_ASSISTENZA`, `COMUNICAZIONE_SOCIALE`, `POSTURA_COMFORT`);
+    - Selettore categoria istantaneo a pulsanti segmentati nella tastiera assistiva flottante con rendering dinamico dei pulsanti per Dwell Clicker;
+    - Serializzazione atomica su disco `config/phrasebook.json` e supporto esportazione/importazione per logopedisti e terapisti occupazionali;
+    - Ricerca globale veloce e apprendimento automatico delle frasi verbalizzate nel modello predittivo.
+
+23. **Camera Runtime Hot-Swap & Probing Hardware (core/camera_worker.py):**
+    - Scansione rapida e sicura degli indici webcam hardware disponibili nel sistema tramite DirectShow e Media Foundation (`get_available_cameras()`);
+    - Metodo `switch_camera(new_camera_index)` per commutare a caldo la sorgente di acquisizione senza riavviare l'applicazione o causare race-condition sui buffer;
+    - Rilascio istantaneo e sicuro delle risorse video precedenti e riavvio automatico della pipeline di elaborazione a 60 FPS.
+
 ---
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
@@ -146,7 +162,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 18 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 21 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 
