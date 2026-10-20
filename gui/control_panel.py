@@ -651,6 +651,36 @@ class ControlPanel:
         )
         btn_calib.pack(fill="x", padx=10, pady=(2, 8))
 
+        # Card Trigger Gesti Facciali Silenziosi (FACS)
+        card_gesture = ctk.CTkFrame(self.tab_audio, corner_radius=10)
+        card_gesture.pack(fill="x", pady=4, padx=6)
+
+        ctk.CTkLabel(card_gesture, text="TRIGGER GESTI FACCIALI SILENZIOSI (FACS)", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=10, pady=(6, 2))
+
+        switch_gesture = ctk.CTkSwitch(
+            card_gesture,
+            text="Abilita Clic con Gesto Facciale (Senza Suono / Tracheostomia)",
+            variable=self.gesture_enabled,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            command=lambda: self.on_param_change("gesture_enabled", self.gesture_enabled.get()),
+        )
+        switch_gesture.pack(anchor="w", padx=10, pady=3)
+
+        row_gtype = ctk.CTkFrame(card_gesture, fg_color="transparent")
+        row_gtype.pack(fill="x", padx=10, pady=3)
+        ctk.CTkLabel(row_gtype, text="Gesto di Attivazione:", font=ctk.CTkFont(family="Segoe UI", size=11)).pack(side="left")
+
+        combo_gtype = ctk.CTkComboBox(
+            row_gtype,
+            values=["Apertura Bocca (jaw_open)", "Sorriso / Labbra (smile)", "Corrugamento Sopracciglia (brow_down)"],
+            variable=self.gesture_type_str,
+            command=self._on_gesture_type_selected,
+            width=230,
+        )
+        combo_gtype.pack(side="right")
+
+        self._create_slider_row(card_gesture, "Soglia Attivazione (Sensibilità)", self.gesture_threshold_val, 0.25, 0.80, "gesture_threshold", "{:.2f}")
+
     # ---------------- TAB 5: TRACK STATUS & RADAR POSTURALE ----------------
     def _build_tab_radar(self):
         desc = ctk.CTkLabel(
@@ -908,6 +938,15 @@ class ControlPanel:
             self._labels_map["acoustic_threshold"].configure(text=f"{new_threshold:.2f}")
         self.lbl_mic_reading.configure(text=f"Calibrato! Nuova: {new_threshold:.2f}", text_color="#10b981")
         self.on_param_change("acoustic_threshold", new_threshold)
+
+    def _on_gesture_type_selected(self, choice: str):
+        mapping = {
+            "Apertura Bocca (jaw_open)": "jaw_open",
+            "Sorriso / Labbra (smile)": "smile",
+            "Corrugamento Sopracciglia (brow_down)": "brow_down",
+        }
+        raw_type = mapping.get(choice, "jaw_open")
+        self.on_param_change("gesture_type", raw_type)
 
     def update_rom_gains(self, gains: Dict[str, float], is_custom: bool = True):
         """Aggiorna le etichette e lo stato visivo della calibrazione Range of Motion."""
