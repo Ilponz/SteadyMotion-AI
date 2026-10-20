@@ -1008,6 +1008,9 @@ class ControlPanel:
             "magnetic_snapping_enabled": self.magnetic_snap_enabled.get(),
             "magnetic_gravity": self.magnetic_gravity_val.get(),
             "magnetic_radius": self.magnetic_radius_val.get(),
+            "gesture_enabled": self.gesture_enabled.get(),
+            "gesture_type": self.gesture_type_str.get(),
+            "gesture_threshold": self.gesture_threshold_val.get(),
             "appearance_mode": self.appearance_mode_str.get(),
             "ui_scale": self.ui_scale_str.get(),
             "is_custom_rom": self.is_custom_rom,
@@ -1053,6 +1056,13 @@ class ControlPanel:
                 self.magnetic_gravity_val.set(config_data["magnetic_gravity"])
             if "magnetic_radius" in config_data:
                 self.magnetic_radius_val.set(config_data["magnetic_radius"])
+            if "gesture_enabled" in config_data:
+                self.gesture_enabled.set(config_data["gesture_enabled"])
+            if "gesture_type" in config_data:
+                self.gesture_type_str.set(config_data["gesture_type"])
+                self._on_gesture_type_selected(config_data["gesture_type"])
+            if "gesture_threshold" in config_data:
+                self.gesture_threshold_val.set(config_data["gesture_threshold"])
             if "appearance_mode" in config_data:
                 self.appearance_mode_str.set(config_data["appearance_mode"])
                 self._change_appearance_mode(config_data["appearance_mode"])
