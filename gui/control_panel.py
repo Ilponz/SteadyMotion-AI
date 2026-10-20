@@ -82,6 +82,7 @@ class ControlPanel:
         on_open_keyboard: Optional[Callable[[], None]] = None,
         on_open_diagnostics: Optional[Callable[[], None]] = None,
         on_open_palette: Optional[Callable[[], None]] = None,
+        on_switch_camera: Optional[Callable[[int], bool]] = None,
     ):
         self.root = root
         self.on_param_change = on_param_change
@@ -94,6 +95,7 @@ class ControlPanel:
         self.on_open_keyboard = on_open_keyboard
         self.on_open_diagnostics = on_open_diagnostics
         self.on_open_palette = on_open_palette
+        self.on_switch_camera = on_switch_camera
 
         self.profile_manager = ProfileManager()
 

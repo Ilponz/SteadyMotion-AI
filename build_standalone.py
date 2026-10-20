@@ -66,8 +66,21 @@ def build():
         if not os.path.exists(dist_models):
             shutil.copytree(os.path.join(BASE_DIR, "models"), dist_models)
 
-        # Copia script di avvio rapido e diagnostica caregiver nella cartella portatile
-        for extra_file in ("Avvia_EXE_Standalone.bat", "Verifica_Webcam_Caregiver.bat", "diagnostica_hardware.py"):
+        # Copia cartella config/ (profili clinici e prontuario frasi)
+        dist_config = os.path.join(dist_dir, "config")
+        if os.path.exists(dist_config):
+            shutil.rmtree(dist_config)
+        if os.path.exists(os.path.join(BASE_DIR, "config")):
+            shutil.copytree(os.path.join(BASE_DIR, "config"), dist_config)
+
+        # Copia script di avvio rapido, slide-deck e diagnostica caregiver nella cartella portatile
+        for extra_file in (
+            "Avvia_EXE_Standalone.bat",
+            "Verifica_Webcam_Caregiver.bat",
+            "diagnostica_hardware.py",
+            "presentazione_studenti.html",
+            "PROMPT_RECAP_DISPOSITIVO.md",
+        ):
             src = os.path.join(BASE_DIR, extra_file)
             if os.path.exists(src):
                 shutil.copy2(src, os.path.join(dist_dir, extra_file))
