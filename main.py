@@ -26,6 +26,8 @@ from core.dsp_filter import PointFilter2D
 from core.dwell_clicker import DwellClicker
 from core.ergonomics import ErgonomicsMonitor
 from core.audio_feedback import AudioFeedback
+from core.gesture_trigger import GestureTrigger
+from core.magnetic_snapping import MagneticSnapper
 from core.tracker_engine import FaceTrackerEngine
 from core.utils import get_resource_path
 from core.virtual_input import (
@@ -110,6 +112,24 @@ class SteadyMotionApp:
             on_override_end=self._on_copilot_end,
         )
 
+        # UI Automation & Accessibility Magnetic Target Snapping
+        self.magnetic_snapper = MagneticSnapper(
+            snap_radius=36.0,
+            gravity_factor=0.65,
+            escape_velocity=280.0,
+            is_enabled=True,
+        )
+
+        # Trigger Gesti Facciali Silenziosi (FACS Blendshapes: Jaw Open, Smile, Brow)
+        self.gesture_trigger = GestureTrigger(
+            gesture_type="jaw_open",
+            trigger_threshold=0.45,
+            release_threshold=0.20,
+            debounce_sec=0.45,
+            click_callback=self._on_gesture_click,
+            is_enabled=False,
+        )
+
         # Camera Worker (Triple Buffering, Buffer=1, FourCC MJPG, 60 FPS, Event-Driven)
         self.camera = CameraWorker(
             camera_index=0,
@@ -166,6 +186,7 @@ class SteadyMotionApp:
         self.shared_is_fatigued: bool = False
         self.shared_fatigue_reason: str = "Nessuna"
         self.shared_is_copilot: bool = False
+        self.shared_is_snapped: bool = False
 
         # Stato tasti globali
         self.prev_f12 = False
@@ -179,6 +200,12 @@ class SteadyMotionApp:
     def _on_copilot_end(self):
         """Ripristino del controllo cefalico dopo l'intervento del caregiver."""
         self.audio_feedback.play("resume")
+
+    def _on_gesture_click(self, gesture: str):
+        """Genera un clic istantaneo e silenzioso al riconoscimento del gesto facciale."""
+        if not self.is_paused:
+            self.mouse.click("left")
+            self.audio_feedback.play("click_left")
 
     def toggle_demo(self, enabled: bool):
         """Attiva o disattiva la modalità demo di simulazione cefalica."""
@@ -309,6 +336,18 @@ class SteadyMotionApp:
             self.hud.set_theme(str(value))
         elif param_name == "hud_size":
             self.hud.set_size(int(value))
+        elif param_name == "magnetic_snapping_enabled":
+            self.magnetic_snapper.update_params(is_enabled=bool(value))
+        elif param_name == "magnetic_gravity":
+            self.magnetic_snapper.update_params(gravity_factor=float(value))
+        elif param_name == "magnetic_radius":
+            self.magnetic_snapper.update_params(snap_radius=float(value))
+        elif param_name == "gesture_enabled":
+            self.gesture_trigger.update_params(is_enabled=bool(value))
+        elif param_name == "gesture_type":
+            self.gesture_trigger.update_params(gesture_type=str(value))
+        elif param_name == "gesture_threshold":
+            self.gesture_trigger.update_params(trigger_threshold=float(value))
 
     def _on_dwell_click(self, action: str, x: int, y: int):
         if self.is_paused:
@@ -357,6 +396,7 @@ class SteadyMotionApp:
         """Calibra la postura neutrale comoda del paziente come centro esatto del desktop."""
         if self.is_demo:
             self.dsp_filter.reset()
+            self.magnetic_snapper.reset()
             self.dwell_clicker.cancel()
             self.ergonomics_monitor.reset_reference()
             return
@@ -374,6 +414,7 @@ class SteadyMotionApp:
                 )
                 self.ergonomics_monitor.reset_reference(res.yaw, res.pitch, res.roll)
         self.dsp_filter.reset()
+        self.magnetic_snapper.reset()
         self.dwell_clicker.cancel()
 
     def toggle_pause(self):
@@ -437,13 +478,14 @@ class SteadyMotionApp:
                     target_py = self.mouse.vy + norm_y * self.mouse.vh
 
                     filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_now)
+                    snap_x, snap_y = self.magnetic_snapper.apply_snap(filt_x, filt_y, t_now)
 
                     act_x, act_y = self.mouse.get_cursor_pos()
                     is_overridden = self.copilot.check_override(act_x, act_y, t_now)
                     if not is_overridden:
-                        self.mouse.move_to_pixel(filt_x, filt_y)
-                        self.copilot.record_injection(filt_x, filt_y)
-                        self.dwell_clicker.update(filt_x, filt_y, t_now)
+                        self.mouse.move_to_pixel(snap_x, snap_y)
+                        self.copilot.record_injection(snap_x, snap_y)
+                        self.dwell_clicker.update(snap_x, snap_y, t_now)
 
                 with self.telemetry_lock:
                     self.shared_fps = loop_fps
@@ -455,6 +497,7 @@ class SteadyMotionApp:
                     self.shared_raw_x = raw_x
                     self.shared_raw_y = raw_y
                     self.shared_is_copilot = self.copilot.is_currently_overridden
+                    self.shared_is_snapped = self.magnetic_snapper.is_snapped
 
                 time.sleep(0.016)
                 continue
@@ -481,6 +524,13 @@ class SteadyMotionApp:
 
                 if face_detected:
                     ergo_st = self.ergonomics_monitor.update(yaw, pitch, roll, now=t_now)
+                    if not self.is_paused:
+                        self.gesture_trigger.process_blendshapes(
+                            jaw_open_score=res.jaw_open_score,
+                            smile_score=res.smile_score,
+                            brow_down_score=res.brow_down_score,
+                            now=t_now,
+                        )
 
                 # Iniezione mouse e Clic a sosta eseguiti SOLO se armato (non in pausa)
                 if face_detected and not is_blinking and not self.is_paused:
@@ -492,13 +542,14 @@ class SteadyMotionApp:
                     target_py = self.mouse.vy + norm_y * self.mouse.vh
 
                     filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_now)
+                    snap_x, snap_y = self.magnetic_snapper.apply_snap(filt_x, filt_y, t_now)
 
                     act_x, act_y = self.mouse.get_cursor_pos()
                     is_overridden = self.copilot.check_override(act_x, act_y, t_now)
                     if not is_overridden:
-                        self.mouse.move_to_pixel(filt_x, filt_y)
-                        self.copilot.record_injection(filt_x, filt_y)
-                        self.dwell_clicker.update(filt_x, filt_y, t_now)
+                        self.mouse.move_to_pixel(snap_x, snap_y)
+                        self.copilot.record_injection(snap_x, snap_y)
+                        self.dwell_clicker.update(snap_x, snap_y, t_now)
 
             with self.telemetry_lock:
                 self.shared_fps = self.camera.actual_fps if self.camera.actual_fps > 0 else loop_fps
@@ -511,6 +562,7 @@ class SteadyMotionApp:
                 self.shared_roll = roll
                 self.shared_is_fatigued = ergo_st.is_fatigued if ergo_st else False
                 self.shared_fatigue_reason = ergo_st.fatigue_reason if ergo_st else "Nessuna"
+                self.shared_is_snapped = self.magnetic_snapper.is_snapped
                 if face_detected:
                     self.shared_raw_x = raw_x
                     self.shared_raw_y = raw_y

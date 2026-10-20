@@ -112,6 +112,11 @@ class ControlPanel:
         self.acoustic_threshold_val = tk.DoubleVar(value=0.18)
         self.demo_mode = tk.BooleanVar(value=False)
 
+        # Aggancio Magnetico Bersagli GUI (Target Snapping)
+        self.magnetic_snap_enabled = tk.BooleanVar(value=True)
+        self.magnetic_gravity_val = tk.DoubleVar(value=0.65)
+        self.magnetic_radius_val = tk.DoubleVar(value=36.0)
+
         # Calibrazione Clinica ROM Asimmetrica
         self.is_custom_rom = False
         self.rom_gains = {
@@ -532,6 +537,21 @@ class ControlPanel:
         switch_dwell.pack(anchor="w", padx=10, pady=3)
         self._create_slider_row(card_dwell, "Tempo di Sosta per Clic", self.dwell_time_val, 0.35, 1.50, "dwell_time", "{:.2f} s")
 
+        card_snap = ctk.CTkFrame(self.tab_controls, corner_radius=10)
+        card_snap.pack(fill="x", pady=3, padx=6)
+        ctk.CTkLabel(card_snap, text="AGGANCIO MAGNETICO BERSAGLI (TARGET SNAPPING)", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=10, pady=(6, 2))
+
+        switch_snap = ctk.CTkSwitch(
+            card_snap,
+            text="Abilita Aggancio Magnetico Bersagli GUI (Fitts's Law)",
+            variable=self.magnetic_snap_enabled,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            command=lambda: self.on_param_change("magnetic_snapping_enabled", self.magnetic_snap_enabled.get()),
+        )
+        switch_snap.pack(anchor="w", padx=10, pady=3)
+        self._create_slider_row(card_snap, "Intensità Attrazione Gravitazionale", self.magnetic_gravity_val, 0.10, 1.00, "magnetic_gravity", "{:.2f}")
+        self._create_slider_row(card_snap, "Raggio di Prossimità (px)", self.magnetic_radius_val, 15.0, 60.0, "magnetic_radius", "{:.1f} px")
+
     # ---------------- TAB 3: PROFILI CLINICI ----------------
     def _build_tab_presets(self):
         desc_lbl = ctk.CTkLabel(
@@ -941,6 +961,9 @@ class ControlPanel:
             "dwell_time": self.dwell_time_val.get(),
             "acoustic_enabled": self.acoustic_enabled.get(),
             "acoustic_threshold": self.acoustic_threshold_val.get(),
+            "magnetic_snapping_enabled": self.magnetic_snap_enabled.get(),
+            "magnetic_gravity": self.magnetic_gravity_val.get(),
+            "magnetic_radius": self.magnetic_radius_val.get(),
             "appearance_mode": self.appearance_mode_str.get(),
             "ui_scale": self.ui_scale_str.get(),
             "is_custom_rom": self.is_custom_rom,
@@ -980,6 +1003,12 @@ class ControlPanel:
                 self.acoustic_enabled.set(config_data["acoustic_enabled"])
             if "acoustic_threshold" in config_data:
                 self.acoustic_threshold_val.set(config_data["acoustic_threshold"])
+            if "magnetic_snapping_enabled" in config_data:
+                self.magnetic_snap_enabled.set(config_data["magnetic_snapping_enabled"])
+            if "magnetic_gravity" in config_data:
+                self.magnetic_gravity_val.set(config_data["magnetic_gravity"])
+            if "magnetic_radius" in config_data:
+                self.magnetic_radius_val.set(config_data["magnetic_radius"])
             if "appearance_mode" in config_data:
                 self.appearance_mode_str.set(config_data["appearance_mode"])
                 self._change_appearance_mode(config_data["appearance_mode"])

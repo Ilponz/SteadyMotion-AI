@@ -500,6 +500,71 @@ def test_hud_high_contrast_themes():
     print(">>> TEST 15 SUPERATO! <<<")
 
 
+def test_magnetic_target_snapping():
+    print("\n--- TEST 16: UI Automation Magnetic Target Snapping (Fitts's Law) ---")
+    from core.magnetic_snapping import MagneticSnapper
+
+    snapper = MagneticSnapper(
+        snap_radius=36.0,
+        gravity_factor=0.65,
+        escape_velocity=280.0,
+        is_enabled=True,
+    )
+
+    # 1. Bersaglio Mock a centro (500, 500)
+    target_id = snapper.add_mock_target(left=480, top=480, right=520, bottom=520)
+    assert target_id is not None, "Target id deve essere valido"
+
+    # 2. Verifica attrazione verso il baricentro per punto a 20 px di distanza (dx = 20 px, dy = 0)
+    t = 100.0
+    # Posizione di partenza statica
+    snapper.apply_snap(520.0, 500.0, t)
+    # Passo successivo a velocità lenta (v = 0 px/s)
+    snapped_x, snapped_y = snapper.apply_snap(520.0, 500.0, t + 0.016)
+
+    assert snapped_y == 500.0, f"Coordinata Y deve rimanere allineata a 500.0, ottenuta: {snapped_y}"
+    assert 500.0 < snapped_x < 520.0, f"La coordinata X deve essere attratta verso 500.0, ottenuta: {snapped_x}"
+
+    delta_x = 520.0 - snapped_x
+    expected_delta = 20.0 * ((1.0 - 20.0 / 36.0) ** 2) * 0.65
+    assert abs(delta_x - expected_delta) < 1e-5, f"Delta X atteso {expected_delta:.4f} px, misurato {delta_x:.4f} px"
+    print(f"Attrazione Gravitazionale a d=20 px (R=36): Spostamento {delta_x:.2f} px verso il centro (100% Conforme)")
+
+    # 3. Continuità C^1 e zero correzione al centro esatto (d = 0.0 px)
+    center_x, center_y = snapper.apply_snap(500.0, 500.0, t + 0.032)
+    shift_at_center = math.hypot(center_x - 500.0, center_y - 500.0)
+    assert shift_at_center < 1e-9, f"Al centro (d=0) la correzione deve essere 0.000000 px, calcolata: {shift_at_center:.6f} px"
+    print(f"Continuità C1 al centro del target (d=0): {shift_at_center:.6f} px di scarto")
+
+    # 4. Fuori raggio di prossimità (d > 36 px, es. d = 50 px -> (550, 500))
+    snapper.reset()
+    out_x, out_y = snapper.apply_snap(550.0, 500.0, t)
+    assert out_x == 550.0 and out_y == 500.0, "Fuori raggio lo snapping non deve alterare le coordinate"
+    assert not snapper.is_snapped, "Fuori raggio is_snapped deve essere False"
+    print("Zona Esterna (d > R_snap): 100% Cursore Libero (Zero Alterazione)")
+
+    # 5. Breakout ad alta velocità (v = 400 px/s > v_escape = 280 px/s)
+    snapper.reset()
+    # Punto iniziale a 525 px
+    snapper.apply_snap(525.0, 500.0, t)
+    # Salto a 515 px in 0.025s (v = 10 px / 0.025s = 400 px/s)
+    esc_x, esc_y = snapper.apply_snap(515.0, 500.0, t + 0.025)
+    assert esc_x == 515.0 and esc_y == 500.0, f"A v=400 px/s deve avvenire il breakout immediato, calcolato: {esc_x}, {esc_y}"
+    assert not snapper.is_snapped, "A velocità di fuga is_snapped deve essere False"
+    print("Breakout ad Alta Velocità (v = 400 px/s > 280 px/s): 100% Fuga Riuscita (Nessun Blocco)")
+
+    # 6. Benchmark prestazioni e Zero Heap Churn (100 cicli)
+    t0 = time.perf_counter()
+    for i in range(100):
+        snapper.apply_snap(510.0, 500.0, t + 0.1 + i * 0.016)
+    t1 = time.perf_counter()
+    total_ms = (t1 - t0) * 1000.0
+    print(f"Esecuzione 100 chiamate a 60 Hz: {total_ms:.3f} ms ({total_ms * 10.0:.2f} µs/chiamata)")
+    assert total_ms < 0.3, f"Tempo eccessivo: {total_ms:.3f} ms (limite 0.3 ms)"
+
+    print(">>> TEST 16 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -516,8 +581,9 @@ if __name__ == "__main__":
     test_ballistics_curve_and_micro_precision()
     test_caregiver_copilot_override()
     test_hud_high_contrast_themes()
+    test_magnetic_target_snapping()
     print("\n========================================================")
-    print("TUTTI I 15 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 16 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

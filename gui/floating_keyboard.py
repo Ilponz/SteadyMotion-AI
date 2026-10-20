@@ -358,20 +358,32 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         # Verbalizza subito con sintesi vocale
         self._speak_phrase(phrase)
 
-    def _extract_current_prefix(self) -> str:
-        """Estrae l'ultimo token non completato per la predizione contestuale."""
+    def _extract_current_prefix_and_previous(self) -> Tuple[str, Optional[str]]:
+        """Estrae l'ultimo token non completato e la parola precedente completata."""
         text = self.typed_text.get()
-        if not text or text[-1].isspace():
-            return ""
+        if not text:
+            return "", None
         tokens = text.split()
-        return tokens[-1] if tokens else ""
+        if text[-1].isspace():
+            # Il cursore è dopo uno spazio: prefisso vuoto, l'ultimo token è la parola precedente
+            prev = tokens[-1] if tokens else None
+            return "", prev
+        else:
+            # Si sta digitando una parola
+            prefix = tokens[-1] if tokens else ""
+            prev = tokens[-2] if len(tokens) >= 2 else None
+            return prefix, prev
+
+    def _extract_current_prefix(self) -> str:
+        prefix, _ = self._extract_current_prefix_and_previous()
+        return prefix
 
     def _update_suggestions(self):
-        """Aggiorna i 4 pulsanti di predizione rapida in base al testo digitato."""
+        """Aggiorna i 4 pulsanti di predizione rapida con supporto Next-Word Bigrammi."""
         if not hasattr(self, "sug_buttons") or not self.sug_buttons:
             return
-        prefix = self._extract_current_prefix()
-        suggestions = self.word_predictor.predict(prefix, max_results=4)
+        prefix, prev_word = self._extract_current_prefix_and_previous()
+        suggestions = self.word_predictor.predict(prefix, previous_word=prev_word, max_results=4)
 
         for i, btn in enumerate(self.sug_buttons):
             if i < len(suggestions):
@@ -397,7 +409,7 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         if not suggestion:
             return
 
-        prefix = self._extract_current_prefix()
+        prefix, prev_word = self._extract_current_prefix_and_previous()
         cur = self.typed_text.get()
 
         # Calcolo del frammento residuo da iniettare
@@ -417,7 +429,9 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             except Exception:
                 pass
 
-        # Apprendimento adattivo della frequenza d'uso in RAM
+        # Apprendimento adattivo in RAM (sia vocabolo che bigramma contestuale)
+        if prev_word:
+            self.word_predictor.learn_bigram(prev_word, suggestion)
         self.word_predictor.learn_word(suggestion)
 
         # Cursore grafico alla fine del display

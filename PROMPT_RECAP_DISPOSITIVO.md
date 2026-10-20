@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (15 su 15 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (16 su 16 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback MSMF (Media Foundation);
@@ -114,6 +114,12 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (1
 17. **Presentazione Interattiva HTML per Studenti (presentazione_studenti.html):**
     - Slide-deck interattivo moderno con navigazione da tastiera, fullscreen e grafici di impatto per platea studentesca.
 
+18. **UI Automation & Accessibility Magnetic Target Snapping (core/magnetic_snapping.py):**
+    - Attrazione magnetica gravitazionale continua $C^1$ verso il baricentro di elementi interattivi GUI (pulsanti, icone, link, checkbox);
+    - Riduzione sensibile dell'indice di difficoltà di Fitts (Fitts's Law) e stabilizzazione critica della fase di Dwell eliminando la deriva periferica causata da spasmi muscolari;
+    - **Velocità di Fuga (Breakout Velocity):** Se l'utente esegue una saccade o un movimento motorio rapido intenzionale ($v > 280\text{ px/s}$), l'attrazione decade istantaneamente a zero ($\alpha = 0.0$), prevenendo qualsiasi effetto di cursore viscoso o "incollato";
+    - Zero Heap Churn: strutture Win32 pre-allocate in memoria C (`POINT`, `RECT`) e cache rettangolo attivo ($< 1.0\ \mu\text{s}$ per ciclo a 60 Hz).
+
 ---
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
@@ -130,7 +136,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 15 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 16 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 
