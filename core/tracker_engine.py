@@ -223,15 +223,54 @@ class FaceTrackerEngine:
         smile = max(smile_l, smile_r)
         brow_down = max(brow_l, brow_r)
 
-        # 4. Gaze Micro-Correction via Iride (X e Y)
+        # 4. Gaze Micro-Correction Binoculare 2D con Deadband Fisiologico Anti-Nistagmo
         iris_dx, iris_dy = 0.0, 0.0
-        if len(landmarks) > self.RIGHT_IRIS:
+        n_landmarks = len(landmarks)
+        if n_landmarks > self.RIGHT_IRIS:
+            # Occhio Sinistro
             l_iris = landmarks[self.LEFT_IRIS]
             l_in = landmarks[self.LEFT_EYE_INNER]
             l_out = landmarks[self.LEFT_EYE_OUTER]
-            w_eye = abs(l_in.x - l_out.x) + 1e-6
-            iris_dx = (l_iris.x - (l_in.x + l_out.x) * 0.5) / w_eye
-            iris_dy = (l_iris.y - (l_in.y + l_out.y) * 0.5) / max(0.01, w_eye * 0.6)
+            w_l = abs(l_in.x - l_out.x) + 1e-6
+            dx_l = (l_iris.x - (l_in.x + l_out.x) * 0.5) / w_l
+            dy_l = (l_iris.y - (l_in.y + l_out.y) * 0.5) / max(0.01, w_l * 0.6)
+
+            # Occhio Destro
+            r_iris = landmarks[self.RIGHT_IRIS]
+            r_in = landmarks[self.RIGHT_EYE_INNER]
+            r_out = landmarks[self.RIGHT_EYE_OUTER]
+            w_r = abs(r_in.x - r_out.x) + 1e-6
+            dx_r = (r_iris.x - (r_in.x + r_out.x) * 0.5) / w_r
+            dy_r = (r_iris.y - (r_in.y + r_out.y) * 0.5) / max(0.01, w_r * 0.6)
+
+            # Fusione binoculare asimmetrica resiliente (gestione ammiccamento/ptosi monoculare)
+            if blink_l > 0.40 and blink_r <= 0.40:
+                raw_iris_x = dx_r
+                raw_iris_y = dy_r
+            elif blink_r > 0.40 and blink_l <= 0.40:
+                raw_iris_x = dx_l
+                raw_iris_y = dy_l
+            elif is_blinking:
+                raw_iris_x = 0.0
+                raw_iris_y = 0.0
+            else:
+                raw_iris_x = (dx_l + dx_r) * 0.5
+                raw_iris_y = (dy_l + dy_r) * 0.5
+
+            # Filtro Deadband Soft-Threshold per tremore biologico / micro-saccadi a riposo:
+            # Le oscillazioni spontanee oculari (< 0.035) vengono azzerate per garantire stabilità
+            # assoluta sul target durante la fase di sosta Dwell
+            deadband_x = 0.035
+            deadband_y = 0.045
+            if abs(raw_iris_x) > deadband_x:
+                iris_dx = math.copysign(abs(raw_iris_x) - deadband_x, raw_iris_x) * 1.2
+            else:
+                iris_dx = 0.0
+
+            if abs(raw_iris_y) > deadband_y:
+                iris_dy = math.copysign(abs(raw_iris_y) - deadband_y, raw_iris_y) * 1.2
+            else:
+                iris_dy = 0.0
 
         # 5. FUSIONE IBRIDA 6-DoF Normalizzata (Rotazione Angolare Rigida + Traslazione Fine Invariante Z)
         d_yaw = (yaw - self.neutral_yaw) / self.fov_yaw

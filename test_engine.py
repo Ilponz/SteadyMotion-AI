@@ -135,7 +135,7 @@ def test_subpixel_virtual_input():
 
 
 def test_tracker_video_mode_and_ipd_bounds():
-    print("\n--- TEST 5: FaceLandmarker VIDEO mode & Bounding Fisiologico IPD ---")
+    print("\n--- TEST 5: FaceLandmarker VIDEO mode, SO(3) Gimbal-Lock & Bounding IPD ---")
     model_path = get_resource_path(os.path.join("models", "face_landmarker.task"))
     tracker = FaceTrackerEngine(model_path=model_path)
     dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -147,6 +147,32 @@ def test_tracker_video_mode_and_ipd_bounds():
     # Verifica calibrazione e limiti IPD
     tracker.calibrate_center(0.0, 0.0, 0.5, 0.5, ipd=0.18)
     assert tracker.neutral_ipd == 0.18
+
+    # 1. Verifica decomposizione SO(3) su matrice identità (Zero-Heap)
+    eye_mat = np.eye(4, dtype=np.float64)
+    yaw, pitch, roll = tracker._extract_euler_angles(eye_mat)
+    assert abs(yaw) < 1e-4 and abs(pitch) < 1e-4 and abs(roll) < 1e-4
+    print("Decomposizione SO(3) Matrice Identità: (0.0°, 0.0°, 0.0°) Conforme")
+
+    # 2. Verifica protezione Singolarità Gimbal Lock (sy < 1e-6)
+    # Matrice con rotazione Pitch = 90° (sy = 0)
+    sing_mat = np.array([
+        [0.0, 0.0, -1.0, 0.0],
+        [0.0, 1.0,  0.0, 0.0],
+        [1.0, 0.0,  0.0, 0.0],
+        [0.0, 0.0,  0.0, 1.0]
+    ], dtype=np.float64)
+    s_yaw, s_pitch, s_roll = tracker._extract_euler_angles(sing_mat)
+    assert not math.isnan(s_yaw) and not math.isnan(s_pitch) and not math.isnan(s_roll)
+    print(f"Protezione Gimbal-Lock a sy < 1e-6: Pitch={s_pitch:.1f}°, Yaw={s_yaw:.1f}° (Zero NaN)")
+
+    # 3. Latenza decomposizione SO(3) senza allocazione heap
+    t0 = time.perf_counter()
+    for _ in range(100):
+        tracker._extract_euler_angles(eye_mat)
+    lat_us = (time.perf_counter() - t0) / 100 * 1e6
+    print(f"Latenza decomposizione SO(3) 6-DoF: {lat_us:.2f} µs/chiamata (< 1.0 µs target)")
+
     print(">>> TEST 5 SUPERATO! <<<")
 
 

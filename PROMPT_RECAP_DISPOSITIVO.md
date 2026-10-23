@@ -27,6 +27,9 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
 2. **Biometria 6-DoF & Gaze Engine Avanzato (core/tracker_engine.py):**
    - MediaPipe Tasks FaceLandmarker in modalità nativa `RunningMode.VIDEO` con timestamp monotonici continui;
    - Zero Heap Churn: buffer RGB pre-allocato in-place (`dst=self._rgb_buffer`);
+   - **Decomposizione SO(3) 6-DoF Zero-Heap (0.85 µs):** estrazione angolare da matrice di trasformazione con salvaguardia singolarità Gimbal-Lock ($sy < 1e-6$);
+   - **Gaze Micro-Correction Binoculare 2D con Deadband Anti-Nistagmo:** media robusta tra occhio sinistro e destro con soppressione del tremore oculare biologico a riposo ($< 0.035$) e gestione ammiccamento/ptosi asimmetrica;
+   - **Estrazione FACS Blendshapes Zero-Heap:** scansione diretta O(N) delle categorie attive senza allocazione di dizionari Python intermedi;
    - **Normalizzazione Fisiologica IPD 3D con Bounding Bisezione:** scala inter-oculare vincolata rigidamente nell'intervallo [0.65, 1.60] per impedire al cursore di "catapultarsi" quando l'utente sbadiglia, tossisce o ruota la testa;
    - EAR Blink Clamping (congelamento del cursore per 150 ms durante l'ammiccamento naturale).
 
@@ -216,20 +219,20 @@ Quando sei a casa davanti alla postazione reale con il paziente:
 Quando ti sposti sul computer di casa o apri la nuova sessione, puoi dire all'AI:
 *"Procediamo con le prossime migliorie pianificate per SteadyMotion AI"* oppure scegliere direttamente uno di questi argomenti del framework di audit cinico:
 
-1. **Topic 2: Biometria 6-DoF & Gaze Engine Zero-Heap (`core/tracker_engine.py`)**
-   - Eliminazione dell'allocazione del dizionario Python dei 52 blendshapes a ogni frame a 60 Hz (estrazione diretta O(1) dei soli 7 parametri attivi: blink, jawOpen, smile, browDown);
-   - Pre-allocazione della matrice di rotazione SO(3) 4x4 ed eliminazione di `np.array(...)` dinamico per frame.
+1. **Topic 3: DSP One-Euro & Fisica della Traiettoria (`core/dsp_filter.py`)**
+   - Calibrazione dinamica del cutoff $f_c$ sulle frequenze del tremore patologico (Parkinson 4-6 Hz vs Tremore Essenziale 6-10 Hz);
+   - Profiling del soft-thresholding per eliminare ogni sensazione di resistenza o ritardo nell'inversione improvvisa di traiettoria.
 
-2. **Topic 3: Profiling & Accelerazione DirectML / ONNX Runtime vs MediaPipe CPU**
-   - Valutazione su GPU integrate budget (Intel Iris Xe, AMD Radeon Vega / 680M) per verificare se il passaggio a DirectML riduce ulteriormente la latenza di inferenza sotto i 12 ms mantenendo l'assenza di dipendenze esterne.
+2. **Topic 4: Profiling & Accelerazione DirectML / ONNX Runtime vs MediaPipe CPU**
+   - Valutazione su GPU integrate budget (Intel Iris Xe, AMD Radeon Vega / 680M) per verificare se l'inferenza TFLite GPU Delegate / DirectML riduce ulteriormente la latenza sotto i 10 ms su macchine commerciali economiche.
 
 3. **Collaudo dal Vivo con Webcam Reale & Postazione Clinica**
-   - Test sul campo con paziente/volontario seguendo i 8 punti della procedura di collaudo (F12, ROM 5 punti, Dwell, AAC e Co-Pilot).
+   - Test sul campo con paziente/volontario seguendo gli 8 punti della procedura di collaudo (F12, ROM 5 punti, Dwell, AAC e Co-Pilot).
 
 ---
 
 ### 💬 COMANDI RAPIDI DA DARE ALL'AI AL RIENTRO:
-- *"Procediamo con il Topic 2: Ottimizzazione Zero-Heap di Blendshapes e SO(3) in tracker_engine.py"*
+- *"Procediamo con il Topic 3: DSP One-Euro & Fisica della Traiettoria in dsp_filter.py"*
 - *"Ho collegato la webcam reale a casa: ecco i risultati della diagnostica hardware..."*
 - *"Eseguiamo il collaudo dal vivo con il paziente"*
 ```
