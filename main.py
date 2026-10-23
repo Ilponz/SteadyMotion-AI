@@ -200,6 +200,8 @@ class SteadyMotionApp:
 
     def _on_copilot_start(self):
         """Notifica acustica e disarmo temporaneo per intervento fisico caregiver."""
+        if self.mouse.is_dragging:
+            self.mouse.mouse_up("left")
         self.audio_feedback.play("pause")
         self.hud.hide()
 
@@ -374,6 +376,15 @@ class SteadyMotionApp:
         if self.is_paused:
             return
         self.clinical_logger.record_dwell_click(action)
+
+        # Gestione automatica completamento Drag & Drop sul bersaglio di arrivo
+        if self.mouse.is_dragging:
+            self.mouse.mouse_up("left")
+            self.audio_feedback.play("drag_end")
+            if hasattr(self, "_action_palette") and self._action_palette is not None and self._action_palette.winfo_exists():
+                self._action_palette.on_click_completed("drag")
+            return
+
         if action == "left":
             self.mouse.click("left")
             self.audio_feedback.play("click_left")
@@ -442,6 +453,8 @@ class SteadyMotionApp:
 
     def toggle_pause(self):
         self.is_paused = not self.is_paused
+        if self.is_paused and self.mouse.is_dragging:
+            self.mouse.mouse_up("left")
         self.clinical_logger.set_tracking_state(not self.is_paused)
         if self.is_paused:
             self.hud.hide()
@@ -565,10 +578,13 @@ class SteadyMotionApp:
                             now=t_now,
                         )
 
-                # Freno di emergenza fisiologico: chiusura volontaria degli occhi annulla istantaneamente il Dwell in corso
-                if face_detected and is_blinking and self.dwell_clicker.progress > 0.0:
-                    self.clinical_logger.record_dwell_aborted()
-                    self.dwell_clicker.cancel()
+                # Freno di emergenza fisiologico: chiusura volontaria degli occhi annulla istantaneamente il Dwell o Drag in corso
+                if face_detected and is_blinking:
+                    if self.mouse.is_dragging:
+                        self.mouse.mouse_up("left")
+                    if self.dwell_clicker.progress > 0.0:
+                        self.clinical_logger.record_dwell_aborted()
+                        self.dwell_clicker.cancel()
 
                 # Iniezione mouse e Clic a sosta eseguiti SOLO se armato (non in pausa)
                 if face_detected and not is_blinking and not self.is_paused:
@@ -664,6 +680,8 @@ class SteadyMotionApp:
         self.is_running = False
         if self.tracking_thread and self.tracking_thread.is_alive():
             self.tracking_thread.join(timeout=1.0)
+        if self.mouse.is_dragging:
+            self.mouse.mouse_up("left")
         disable_high_precision_timer()
         self.copilot.stop_hook()
         self.audio_feedback.stop()

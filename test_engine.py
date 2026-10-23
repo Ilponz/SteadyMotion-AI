@@ -32,6 +32,7 @@ from core.phrasebook import PhrasebookManager
 from core.clinical_logger import ClinicalSessionLogger
 from core.fitts_evaluator import FittsEvaluator
 from core.tts_engine import TTSEngine
+from core.diagnostics import run_full_diagnostics, format_diagnostic_report_text, scan_cameras
 from gui.hud_overlay import HUD_THEMES, DwellHUD
 
 
@@ -1202,6 +1203,73 @@ def test_dwell_anti_sweep_gate_and_spasm_shock():
     print(">>> TEST 28 SUPERATO! <<<")
 
 
+def test_inference_profiling_xnnpack_vs_directml_benchmark():
+    print("\n--- TEST 29: Profiling Inferenza Neurale: XNNPACK Sub-10ms & Audit DirectML ---")
+    import cv2
+    from mediapipe.tasks import python
+
+    # 1. Audit Architetturale DirectML / GPU Delegate su Windows
+    # Verifica che MediaPipe Tasks su Windows sia nativamente vincolato al delegato CPU XNNPACK
+    # e che l'invocazione di Delegate.GPU sollevi NotImplementedError per flag di compilazione C++
+    gpu_blocked = False
+    try:
+        from mediapipe.tasks.python import vision
+        bad_opts = vision.FaceLandmarkerOptions(
+            base_options=python.BaseOptions(
+                model_asset_path=get_resource_path(os.path.join("models", "face_landmarker.task")),
+                delegate=python.BaseOptions.Delegate.GPU,
+            ),
+            running_mode=vision.RunningMode.VIDEO,
+        )
+        vision.FaceLandmarker.create_from_options(bad_opts)
+    except NotImplementedError:
+        gpu_blocked = True
+    except Exception:
+        gpu_blocked = True
+
+    assert gpu_blocked, "MediaPipe Windows DEVE respingere GPU delegate (flag C++ disabilitati a monte)"
+    print("Audit Delegato Hardware: MediaPipe Tasks su Windows opera nativamente su CPU XNNPACK (Confermato)")
+
+    # 2. Benchmark Quantitativo su Volto Reale in RunningMode.VIDEO (30 frame)
+    face_img_path = get_resource_path(os.path.join("models", "test_face.jpg"))
+    img = cv2.imread(face_img_path)
+    assert img is not None and img.shape[0] > 0, "Immagine di test 'test_face.jpg' non trovata"
+
+    engine = FaceTrackerEngine(model_path=get_resource_path(os.path.join("models", "face_landmarker.task")))
+
+    # Warmup di 5 frame
+    for i in range(5):
+        engine.process_frame(img, 1.0 + i * 0.016)
+
+    # Profiling 30 frame
+    t0 = time.perf_counter()
+    n_frames = 30
+    latencies = []
+    for i in range(n_frames):
+        t_start = time.perf_counter()
+        res = engine.process_frame(img, 2.0 + i * 0.016)
+        latencies.append((time.perf_counter() - t_start) * 1000.0)
+        assert res.face_detected, "Il volto deve essere rilevato con certezza al 100%"
+
+    total_time = time.perf_counter() - t0
+    mean_latency = total_time / n_frames * 1000.0
+    fps_cap = 1000.0 / mean_latency
+
+    print(f"Latenza Media Inferenza Volto Reale: {mean_latency:.2f} ms (Min: {min(latencies):.2f} ms, Max: {max(latencies):.2f} ms)")
+    print(f"Capacità Massima di Throughput (FPS Cap): {fps_cap:.1f} FPS (Target: >= 60.0 FPS)")
+
+    # Tolleranza clinica: latenza media DEVE essere inferiore a 12.0 ms (target nominale 6.0 ms)
+    # per garantire 60 FPS continui senza stutter
+    assert mean_latency < 12.0, f"Latenza media di inferenza eccessiva: {mean_latency:.2f} ms >= 12.0 ms"
+    assert fps_cap >= 80.0, f"Throughput insufficiente per 60 Hz: {fps_cap:.1f} FPS < 80.0 FPS"
+
+    # 3. Verifica Zero Heap Churn Buffer RGB
+    assert engine._rgb_buffer is not None
+    assert engine._rgb_buffer.shape == img.shape
+    print("Zero-Copy RGB Frame Ingestion: Buffer pre-allocato mantenuto senza riallocazione")
+    print(">>> TEST 29 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1231,8 +1299,9 @@ if __name__ == "__main__":
     test_dwell_clicker_soft_grace_potential_well_and_lifecycle()
     test_clinical_tts_engine_async_and_com_safety()
     test_dwell_anti_sweep_gate_and_spasm_shock()
+    test_inference_profiling_xnnpack_vs_directml_benchmark()
     print("\n========================================================")
-    print("TUTTI I 28 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 29 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

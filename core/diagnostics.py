@@ -224,7 +224,7 @@ def benchmark_audio(duration: float = 0.5) -> Dict[str, Any]:
     return res
 
 
-def run_full_diagnostics() -> Dict[str, Any]:
+def run_full_diagnostics(camera_index: Optional[int] = None) -> Dict[str, Any]:
     """Esegue la suite diagnostica completa e calcola il punteggio clinico."""
     t_start = time.perf_counter()
 
@@ -232,6 +232,11 @@ def run_full_diagnostics() -> Dict[str, Any]:
     cam_bench = None
     if cams:
         best_cam = cams[0]
+        if camera_index is not None:
+            for c in cams:
+                if c["index"] == camera_index:
+                    best_cam = c
+                    break
         cam_bench = benchmark_webcam(best_cam["index"], best_cam["backend_id"])
     else:
         cam_bench = {
