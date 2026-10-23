@@ -39,6 +39,9 @@ def build():
         "--hidden-import", "_cffi_backend",
         "--hidden-import", "cv2",
         "--hidden-import", "darkdetect",
+        "--hidden-import", "win32com",
+        "--hidden-import", "win32com.client",
+        "--hidden-import", "pythoncom",
         "--collect-all", "customtkinter",
     ]
 

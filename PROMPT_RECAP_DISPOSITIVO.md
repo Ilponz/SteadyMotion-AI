@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (26 su 26 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (28 su 28 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy & Zero-Heap (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback resiliente su Windows Media Foundation (MSMF) con test di pre-flight sul primo frame;

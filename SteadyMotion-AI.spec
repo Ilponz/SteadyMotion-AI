@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('C:\\Users\\manue\\Documents\\Progetto SteadyMotion\\models\\face_landmarker.task', 'models')]
 binaries = []
-hiddenimports = ['mediapipe', 'mediapipe.tasks', 'mediapipe.tasks.python', 'mediapipe.tasks.python.vision', 'sounddevice', '_cffi_backend', 'cv2', 'darkdetect']
+hiddenimports = ['mediapipe', 'mediapipe.tasks', 'mediapipe.tasks.python', 'mediapipe.tasks.python.vision', 'sounddevice', '_cffi_backend', 'cv2', 'darkdetect', 'win32com', 'win32com.client', 'pythoncom']
 tmp_ret = collect_all('customtkinter')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
