@@ -18,9 +18,10 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
 Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (22 su 22 superati al 100%):
 
-1. **Video Ingestion Asincrona Zero-Copy (core/camera_worker.py):**
-   - Backend DirectShow con buffer driver forzato a 1 e fallback MSMF (Media Foundation);
-   - Triple Buffering circolare pre-allocato e sincronizzazione hardware `threading.Event` (zero allocazioni di frame nel loop a 60 Hz);
+1. **Video Ingestion Asincrona Zero-Copy & Zero-Heap (core/camera_worker.py):**
+   - Backend DirectShow con buffer driver forzato a 1 e fallback resiliente su Windows Media Foundation (MSMF) con test di pre-flight sul primo frame;
+   - **Zero Heap Churn Ingestion:** riutilizzo rigoroso del buffer numpy pre-allocato via `cap.read(image=self._raw_capture_buf)`: azzerati ~53 MB/s di allocazioni dinamiche C++ nel runtime;
+   - Triple Buffering circolare pre-allocato e sincronizzazione hardware `threading.Event` atomica con lock (zero contesa e zero frame persi a 60 Hz);
    - Sub-sampling fotometrico Luma rapido per alert automatico di scarsa illuminazione (< 25 nit).
 
 2. **Biometria 6-DoF & Gaze Engine Avanzato (core/tracker_engine.py):**
@@ -210,26 +211,25 @@ Quando sei a casa davanti alla postazione reale con il paziente:
 
 ---
 
-### 📌 PROSSIMI PASSI & COSA C'È DA FARE ADESSO (ROADMAP DA AVVIARE SUL NUOVO DISPOSITIVO)
+### 📌 PROSSIMI PASSI & COSA C'È DA FARE ADESSO (ROADMAP EVOLUTIVA DA AVVIARE SUL NUOVO DISPOSITIVO)
 
 Quando ti sposti sul computer di casa o apri la nuova sessione, puoi dire all'AI:
-*"Procediamo con le prossime migliorie pianificate per SteadyMotion AI"* oppure scegliere direttamente una di queste opzioni prioritarie:
+*"Procediamo con le prossime migliorie pianificate per SteadyMotion AI"* oppure scegliere direttamente uno di questi argomenti del framework di audit cinico:
 
-1. **Opzione 1 (Prioritaria): Curva Balistica di Precisione Fisiologica (Ballistic Transfer Function)**
-   - Passare da mappatura puramente lineare a curva non-lineare ($\Delta x = \text{sign}(dx) \cdot |dx|^\gamma \cdot G$ con $\gamma \approx 1.25$):
-   - Consente al paziente di centrare con estrema facilità icone piccole o caselle di spunta al centro dello schermo, mantenendo allo stesso tempo la capacità di raggiungere gli angoli del monitor con micro-rotazioni del capo senza affaticamento.
+1. **Topic 2: Biometria 6-DoF & Gaze Engine Zero-Heap (`core/tracker_engine.py`)**
+   - Eliminazione dell'allocazione del dizionario Python dei 52 blendshapes a ogni frame a 60 Hz (estrazione diretta O(1) dei soli 7 parametri attivi: blink, jawOpen, smile, browDown);
+   - Pre-allocazione della matrice di rotazione SO(3) 4x4 ed eliminazione di `np.array(...)` dinamico per frame.
 
-2. **Opzione 2: Modalità Co-Pilot & Rilevamento Intervento Caregiver**
-   - Intercettare il movimento del mouse fisico USB: se il caregiver interviene per spostare una finestra o cliccare, il tracciamento cefalico va in pausa temporanea di cortesia (1.5-2 secondi) per azzerare qualsiasi conflitto sul cursore di Windows.
+2. **Topic 3: Profiling & Accelerazione DirectML / ONNX Runtime vs MediaPipe CPU**
+   - Valutazione su GPU integrate budget (Intel Iris Xe, AMD Radeon Vega / 680M) per verificare se il passaggio a DirectML riduce ulteriormente la latenza di inferenza sotto i 12 ms mantenendo l'assenza di dipendenze esterne.
 
-3. **Opzione 3: Personalizzazione Visiva Avanzata dell'HUD Ring (Ipovisione & Contrasto)**
-   - Dimensioni regolabili del cerchio Dwell (60, 80, 100, 120 px per schermi 4K o pazienti anziani/ipovedenti);
-   - 4 Temi cromatici ad alto contrasto (*Neon Emerald*, *Electric Cyan*, *High-Contrast Amber*, *Obsidian Violet*) per garantire leggibilità assoluta su qualsiasi sfondo di Windows (pagine web chiare, video scuri, testo fitto).
+3. **Collaudo dal Vivo con Webcam Reale & Postazione Clinica**
+   - Test sul campo con paziente/volontario seguendo i 8 punti della procedura di collaudo (F12, ROM 5 punti, Dwell, AAC e Co-Pilot).
 
 ---
 
 ### 💬 COMANDI RAPIDI DA DARE ALL'AI AL RIENTRO:
-- *"Procediamo con l'Opzione 1 (Curva Balistica di Precisione) e l'Opzione 2 (Co-Pilot Caregiver)"*
+- *"Procediamo con il Topic 2: Ottimizzazione Zero-Heap di Blendshapes e SO(3) in tracker_engine.py"*
 - *"Ho collegato la webcam reale a casa: ecco i risultati della diagnostica hardware..."*
 - *"Eseguiamo il collaudo dal vivo con il paziente"*
 ```

@@ -131,6 +131,9 @@ class SteadyMotionApp:
             is_enabled=False,
         )
 
+        # Telemetria Clinica & Cartella Riabilitativa Digitale (ASL/SSN)
+        self.clinical_logger = ClinicalSessionLogger()
+
         # Camera Worker (Triple Buffering, Buffer=1, FourCC MJPG, 60 FPS, Event-Driven)
         self.camera = CameraWorker(
             camera_index=0,
