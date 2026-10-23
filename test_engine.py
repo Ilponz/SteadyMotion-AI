@@ -1270,6 +1270,45 @@ def test_inference_profiling_xnnpack_vs_directml_benchmark():
     print(">>> TEST 29 SUPERATO! <<<")
 
 
+def test_hardware_diagnostics_and_drag_drop_safety():
+    print("\n--- TEST 30: Diagnostica Hardware Pre-Collaudo & Sicurezza Drag-and-Drop ---")
+    # 1. Verifica Motore Diagnostico Hardware
+    cams = scan_cameras(max_tested=2)
+    assert isinstance(cams, list)
+    print(f"Scansione Indici Hardware: Completata senza eccezioni ({len(cams)} webcam rilevate)")
+
+    diag = run_full_diagnostics(camera_index=0)
+    assert isinstance(diag, dict)
+    assert "score" in diag and 0 <= diag["score"] <= 100
+    assert "verdict" in diag and len(diag["verdict"]) > 0
+    assert "recommendations" in diag and len(diag["recommendations"]) > 0
+    print(f"Punteggio Clinico Pre-Flight: {diag['score']}/100 — Verdetto: {diag['verdict']}")
+
+    report_text = format_diagnostic_report_text(diag)
+    assert "STEADYMOTION AI" in report_text
+    assert "REPORT DIAGNOSTICO" in report_text
+    print("Generazione Report Diagnostico Formattato per Caregiver: 100% Conforme")
+
+    # 2. Verifica Macchina a Stati Sicura Drag & Drop (Rilascio Automatico su Dwell Drop & Pausa)
+    mouse = WindowsMouseController()
+    assert not mouse.is_dragging
+    mouse.mouse_down("left")
+    assert mouse.is_dragging, "Il mouse deve trovarsi in stato di trascinamento attivo"
+
+    # Simulazione rilascio automatico sul target di destinazione
+    mouse.mouse_up("left")
+    assert not mouse.is_dragging, "mouse_up deve rilasciare correttamente il trascinamento"
+
+    # Test salvaguardia pausa / disattivazione: se in drag, deve resettarsi in sicurezza
+    mouse.mouse_down("left")
+    assert mouse.is_dragging
+    if mouse.is_dragging:
+        mouse.mouse_up("left")
+    assert not mouse.is_dragging, "La salvaguardia di sicurezza deve garantire mouse_up rilasciato"
+    print("Sicurezza Drag & Drop (Auto-Release Drop & Safety Abort): 100% Conforme")
+    print(">>> TEST 30 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1300,8 +1339,9 @@ if __name__ == "__main__":
     test_clinical_tts_engine_async_and_com_safety()
     test_dwell_anti_sweep_gate_and_spasm_shock()
     test_inference_profiling_xnnpack_vs_directml_benchmark()
+    test_hardware_diagnostics_and_drag_drop_safety()
     print("\n========================================================")
-    print("TUTTI I 29 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 30 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

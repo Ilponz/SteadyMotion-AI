@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (29 su 29 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (30 su 30 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy & Zero-Heap (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback resiliente su Windows Media Foundation (MSMF) con test di pre-flight sul primo frame;
@@ -197,6 +197,10 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
 
 ---
 
+32. **Diagnostica Hardware Pre-Collaudo & Sicurezza Drag-and-Drop (core/diagnostics.py & main.py):**
+    - Suite di pre-flight check hardware per caregiver: scansione istantanea indici webcam, FourCC MJPG vs YUY2, misura fotometrica dei nit e campionamento microfono per stimare lo score di idoneità ambientale (0-100%);
+    - Macchina a stati resiliente Drag & Drop con rilascio automatico (Auto-Drop) sul bersaglio finale al completamento del Dwell, e sblocco immediato di sicurezza su pausa, ammiccamento di emergenza o intervento Caregiver Co-Pilot.
+
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
 
 Nella cartella del progetto trovi tutto già pronto e compilato:
@@ -211,7 +215,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 29 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 30 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 
