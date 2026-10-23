@@ -31,6 +31,7 @@ from core.gesture_trigger import GestureTrigger
 from core.phrasebook import PhrasebookManager
 from core.clinical_logger import ClinicalSessionLogger
 from core.fitts_evaluator import FittsEvaluator
+from core.tts_engine import TTSEngine
 from gui.hud_overlay import HUD_THEMES, DwellHUD
 
 
@@ -1054,6 +1055,153 @@ def test_camera_worker_lut_low_light_boost_and_blink_abort():
     print(">>> TEST 25 SUPERATO! <<<")
 
 
+def test_dwell_clicker_soft_grace_potential_well_and_lifecycle():
+    print("\n--- TEST 26: Dwell Clicker Soft Grace Potential Well & Auto-Purge Lifecycle ---")
+
+    # 1. Verifica Pozzo di Potenziale Proporzionale alla Distanza (Soft Grace Zone)
+    # R_tol = 20.0, R_grace = 37.0. Span = 17.0
+    dwell = DwellClicker(dwell_time=1.0, tolerance_radius=20.0, leak_rate=1.0, cooldown_time=0.0)
+
+    t = 0.0
+    # Inizializza ancora a (100.0, 100.0)
+    dwell.update(100.0, 100.0, now=t)
+
+    # Accumula progresso fino a 0.50 (25 passi da 0.02s = 0.50s su dwell_time = 1.0s)
+    for _ in range(25):
+        t += 0.02
+        p = dwell.update(100.0, 100.0, now=t)
+    assert abs(p - 0.50) < 0.01, f"Progresso atteso 0.50, ottenuto {p}"
+
+    # Test Micro-Tremore al bordo interno (dist = 20.01 px -> mu ~ 0.0)
+    # Moltiplicatore atteso: 0.5 + 2.0 * 0.0 = 0.5x
+    # 5 passi da 0.02s = 0.10s. Decadimento atteso: 0.10 * 1.0 * 0.5 / 1.0 = 0.05
+    for _ in range(5):
+        t += 0.02
+        p_micro = dwell.update(120.01, 100.0, now=t)
+    expected_micro = 0.50 - 0.05
+    assert abs(p_micro - expected_micro) < 0.015, f"Decadimento micro-tremore errato: atteso {expected_micro:.3f}, ottenuto {p_micro:.3f}"
+    print(f"Pozzo Grace Zone Micro-Tremore (mu ~ 0): Moltiplicatore 0.5x confermato (Progresso: {p_micro:.3f})")
+
+    # Riporta progresso a ~0.50
+    for _ in range(5):
+        t += 0.02
+        dwell.update(100.0, 100.0, now=t)
+    p_ref = dwell.progress
+
+    # Test Spasmo Estensore al perimetro di fuga (dist = 36.99 px -> mu ~ 1.0)
+    # Moltiplicatore atteso: 0.5 + 2.0 * 1.0 = 2.5x
+    # 5 passi da 0.02s = 0.10s. Decadimento atteso: 0.10 * 1.0 * 2.5 / 1.0 = 0.25
+    for _ in range(5):
+        t += 0.02
+        p_spasm = dwell.update(136.99, 100.0, now=t)
+    spasm_decay = p_ref - p_spasm
+    assert abs(spasm_decay - 0.25) < 0.02, f"Decadimento spasmo errato: atteso 0.25, ottenuto {spasm_decay:.3f}"
+    print(f"Pozzo Grace Zone Spasmo Fuga (mu ~ 1): Moltiplicatore 2.5x confermato (Decadimento: {spasm_decay:.3f})")
+
+    # 2. Verifica Spurgo Automatico su Disattivazione (is_enabled = False)
+    cb_calls = []
+    dwell.progress_callback = lambda prog, x, y: cb_calls.append((prog, x, y))
+    for _ in range(10):
+        t += 0.02
+        dwell.update(100.0, 100.0, now=t)
+    assert dwell.progress > 0.0, "Il dwell deve avere accumulato progresso"
+
+    # Disattivazione da pannello o hotkey
+    dwell.is_enabled = False
+    assert dwell.progress == 0.0, "is_enabled = False deve azzerare immediatamente il progresso residuo"
+    assert dwell.anchor_x is None and dwell.anchor_y is None, "is_enabled = False deve resettare l'ancora"
+    assert len(cb_calls) > 0 and cb_calls[-1][0] == 0.0, "La callback deve ricevere notifica di progresso 0.0"
+    print("Spurgo Automatico Progresso su Disattivazione (is_enabled = False): 100% Conforme")
+
+    # 3. Verifica Protezione Inversione Raggio & Ricalcolo Grace Dinamico
+    dwell.is_enabled = True
+    dwell.tolerance_radius = 35.0
+    assert dwell.tolerance_radius == 35.0
+    assert abs(dwell.grace_radius - 35.0 * 1.85) < 0.001, "Il grace_radius deve ricalcolarsi automaticamente proporzionale"
+    print(f"Ricalcolo Dinamico Raggio Grace: Tolleranza={dwell.tolerance_radius:.1f} px -> Grace={dwell.grace_radius:.2f} px")
+    print(">>> TEST 26 SUPERATO! <<<")
+
+
+def test_clinical_tts_engine_async_and_com_safety():
+    print("\n--- TEST 27: Motore Sintesi Vocale Clinico Asincrono (Zero COM STA Error) ---")
+    tts = TTSEngine(rate=0, volume=100)
+    time.sleep(0.15)  # Breve attesa per completamento inizializzazione thread COM
+
+    voices = tts.get_available_voices()
+    print(f"Voci di sistema rilevate ({len(voices)}): {voices}")
+    assert isinstance(voices, list)
+
+    # Verifica chiamata asincrona non bloccante
+    t0 = time.perf_counter()
+    tts.speak("Test SteadyMotion CAA", interrupt=True)
+    lat_ms = (time.perf_counter() - t0) * 1000.0
+    print(f"Tempo di accodamento asincrono frase TTS: {lat_ms:.4f} ms (< 1.0 ms target)")
+    assert lat_ms < 1.0, "La chiamata a speak() deve essere non-bloccante"
+
+    # Verifica controllo parametri rate e volume
+    tts.set_rate(2)
+    assert tts.rate == 2
+    tts.set_volume(80)
+    assert tts.volume == 80
+
+    # Interruzione istantanea e chiusura pulita
+    tts.stop_speaking()
+    tts.stop()
+    print("Inizializzazione COM STA e Rilascio Pulito Apartment: 100% Conforme")
+    print(">>> TEST 27 SUPERATO! <<<")
+
+
+def test_dwell_anti_sweep_gate_and_spasm_shock():
+    print("\n--- TEST 28: Dwell Anti-Sweep Velocity Gate & Freno Spasmo Mioclonico ---")
+    spasm_events = []
+    def on_spasm():
+        spasm_events.append(True)
+
+    dwell = DwellClicker(
+        dwell_time=0.60,
+        tolerance_radius=20.0,
+        sweep_velocity_threshold=240.0,
+        spasm_velocity_threshold=2200.0,
+        spasm_callback=on_spasm,
+        cooldown_time=0.0,
+    )
+    cl = ClinicalSessionLogger(reports_dir="reports_test_tmp3")
+
+    t = 10.0
+    # 1. Sweep rapido across the screen: spostamento di 8 px ogni 0.02s -> v = 400 px/s (> 240 px/s)
+    x = 100.0
+    for _ in range(15):
+        t += 0.02
+        x += 8.0
+        p = dwell.update(x, 200.0, now=t)
+        assert p == 0.0, f"Durante lo sweep veloce a 400 px/s il Dwell deve rimanere a 0.0 (ottenuto {p})"
+
+    print("Anti-Sweep Velocity Gate (v = 400 px/s > 240 px/s): 0.0% accumulo durante il transito (Confermato)")
+
+    # 2. Arresto sul target (v = 0 px/s): il Dwell deve iniziare ad accumulare
+    for _ in range(15):
+        t += 0.02
+        p_settled = dwell.update(x, 200.0, now=t)
+    assert p_settled > 0.40, f"Dopo l'arresto sul target il Dwell deve progredire (ottenuto {p_settled:.2f})"
+    print(f"Aggancio Target Stazionario (v = 0 px/s): Progresso fluido attivato ({p_settled:.2f})")
+
+    # 3. Spasmo Mioclonico Violento: salto istantaneo di 60 px in 0.02s -> v = 3000 px/s (> 2200 px/s)
+    t += 0.02
+    x += 60.0
+    p_spasm = dwell.update(x, 200.0, now=t)
+    if len(spasm_events) > 0:
+        cl.record_spasm_shock()
+
+    assert p_spasm == 0.0, "Lo spasmo deve cancellare istantaneamente il Dwell"
+    assert len(spasm_events) == 1, "Il freno spasmo deve attivare la callback"
+    assert cl.spasm_shock_events == 1, "Lo spasmo deve essere registrato nella telemetria clinica"
+    print("Freno Spasmo Mioclonico Acuto (v = 3000 px/s): Rilevato, Dwell abortito e registrato nella cartella clinica")
+
+    import shutil
+    shutil.rmtree("reports_test_tmp3", ignore_errors=True)
+    print(">>> TEST 28 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1080,8 +1228,11 @@ if __name__ == "__main__":
     test_fitts_evaluator_iso_9241_9()
     test_clinical_soundpacks_engine()
     test_camera_worker_lut_low_light_boost_and_blink_abort()
+    test_dwell_clicker_soft_grace_potential_well_and_lifecycle()
+    test_clinical_tts_engine_async_and_com_safety()
+    test_dwell_anti_sweep_gate_and_spasm_shock()
     print("\n========================================================")
-    print("TUTTI I 25 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 28 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

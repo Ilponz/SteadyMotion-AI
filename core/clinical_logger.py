@@ -42,6 +42,7 @@ class ClinicalSessionLogger:
         # Metriche Motorie
         self.dwell_clicks_completed: int = 0
         self.dwell_aborted_spasms: int = 0
+        self.spasm_shock_events: int = 0
         self.copilot_overrides: int = 0
         self.acoustic_clicks: int = 0
         self.gesture_clicks: int = 0
@@ -89,6 +90,10 @@ class ClinicalSessionLogger:
     def record_dwell_aborted(self):
         """Registra un dwell interrotto da spasmo o tremore (progress decrescente)."""
         self.dwell_aborted_spasms += 1
+
+    def record_spasm_shock(self):
+        """Registra un picco di spasmo mioclonico o scatto acuto involontario ad alta velocità."""
+        self.spasm_shock_events += 1
 
     def record_copilot_override(self):
         """Registra un intervento del caregiver con mouse fisico."""
@@ -165,6 +170,7 @@ class ClinicalSessionLogger:
                 "total_clicks": total_clicks,
                 "dwell_clicks": self.dwell_clicks_completed,
                 "dwell_aborted_spasms": self.dwell_aborted_spasms,
+                "spasm_shock_events": self.spasm_shock_events,
                 "dwell_success_rate_pct": round(dwell_success_rate, 1),
                 "cursor_distance_px": round(self.total_cursor_distance_px, 1),
                 "cursor_distance_meters_approx": round(self.total_cursor_distance_px * 0.000264583, 2),  # ~96 DPI
@@ -208,6 +214,7 @@ class ClinicalSessionLogger:
 | **Clic Totali Eseguiti** | **{m['total_clicks']}** | Interazioni confermate con successo |
 | **Clic Dwell a Sosta** | {m['dwell_clicks']} | Metodo primario di puntamento |
 | **Dwell Interrotti da Spasmi** | {m['dwell_aborted_spasms']} | Indice di tremore o distonia transitoria |
+| **Scatti Spasmodici Acuti (Shock)** | {m['spasm_shock_events']} | Spasmi mioclonici a picco di velocità |
 | **Tasso Successo Dwell** | **{m['dwell_success_rate_pct']}%** | Stabilità di mantenimento della mira |
 | **Distanza Percorsa Cursore** | {m['cursor_distance_px']:.0f} px (~{m['cursor_distance_meters_approx']} m) | Escursione motoria complessiva |
 | **Interventi Co-Pilot Caregiver** | {m['copilot_caregiver_interventions']} | Assistenza fisica dell'operatore |

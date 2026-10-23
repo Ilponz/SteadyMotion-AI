@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (25 su 25 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (26 su 26 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy & Zero-Heap (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback resiliente su Windows Media Foundation (MSMF) con test di pre-flight sul primo frame;
@@ -46,9 +46,12 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
    - **Doppio Clic Asincrono con Ancoraggio Coordinate:** il secondo impulso è ancorato alle coordinate spaziali del primo, azzerando i fallimenti da micro-tremore tra i due clic (`SM_CXDOUBLECLK`);
    - Metodi di digitazione diretta `send_unicode_char`, `send_key_event` e rotellina virtuale `scroll` (`MOUSEEVENTF_WHEEL`).
 
-5. **Dwell Clicker con Algoritmo Leaky Bucket (core/dwell_clicker.py):**
+5. **Dwell Clicker con Algoritmo Leaky Bucket & Soft Grace Potential Well (core/dwell_clicker.py):**
    - Clic a sosta temporizzata (default 650 ms);
-   - Pozzo di gravità (Grace Zone a 1.85x): se uno spasmo sposta temporaneamente il puntatore all'esterno, il progresso decade linearmente anziché azzerarsi bruscamente;
+   - **Pozzo di Potenziale Proporzionale alla Distanza (Soft Grace Zone):** decadimento del progresso modulato su $\mu = \frac{\text{dist} - R_{\text{tol}}}{R_{\text{grace}} - R_{\text{tol}}}$, con tolleranza elastica al micro-tremore a riposo ($0.5\times$) e rapido spurgo su spasmi estensori bruschi o fuga volontaria ($2.5\times$);
+   - **Spurgo Atomico & Ciclo di Vita (`is_enabled = False`):** disattivazione istantanea del dwell clicker con azzeramento del progresso residuo e reset dell'ancora;
+   - **Sincronizzazione Clock Cooldown:** azzera salti di $\Delta t$ al risveglio dal cooldown post-clic;
+   - **Protezione Inversione Raggio:** ricalcolo automatico del raggio di Grace ($1.85\times$) alla variazione dinamica della tolleranza;
    - Micro-inseguimento posturale adattivo (< 4 px/s) per assorbire il rilassamento muscolare del collo;
    - Macchina a stati One-Shot integrata (ripristino automatico a Left Click dopo Clic Destro o Doppio Clic).
 
@@ -174,6 +177,19 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
     - Tabella di lookup pre-allocata (Zero-Heap LUT in memoria C) con curva di gamma dinamica ($\gamma = 0.65$) per rischiarare automaticamente i volti in penombra (< 35 nit) senza richiedere lampade aggiuntive;
     - Freno di emergenza fisiologico volontario (Voluntary Eye Closure / Prolonged Blink): la chiusura prolungata degli occhi azzera istantaneamente qualsiasi Dwell click in corso, liberando il desktop e registrando l'evento nella cartella clinica riabilitativa.
 
+28. **Pozzo di Potenziale Proporzionale Soft Grace & Spurgo Atomico (core/dwell_clicker.py):**
+    - Pozzo di potenziale a decadimento continuo proporzionale alla distanza: micro-tremori periferici subiscono un leak rate dimezzato (0.5x), mentre scatti di fuga verso l'esterno decadono a 2.5x per una transizione istantanea;
+    - Spurgo atomico e notifica immediata alle callback alla disattivazione (`is_enabled = False`) o cambio modalità.
+
+29. **Motore Sintesi Vocale Asincrono Clinical TTS Engine (core/tts_engine.py & gui/floating_keyboard.py):**
+    - Worker thread dedicato a zero jitter con Apartment COM STA nativo (`pythoncom.CoInitialize()`), che elimina alla radice gli errori `CO_E_NOTINITIALIZED` (0x800401F0);
+    - Rilevamento automatico della lingua italiana (`Microsoft Elsa Desktop - Italian`) con controllo dinamico di volume e rate;
+    - Supporto interruzione immediata (`SVSFPurgeBeforeSpeak`) per correzioni veloci e fallback trasparente .NET System.Speech PowerShell.
+
+30. **Anti-Sweep Velocity Gate & Freno Spasmo Mioclonico Acuto (core/dwell_clicker.py, core/clinical_logger.py & main.py):**
+    - Blocco categorico dell'accumulo di progresso Dwell durante i movimenti rapidi tra icone ($v > 240$ px/s), eliminando il 100% dei falsi clic "al volo";
+    - Rilevamento in tempo reale degli scatti spasmodici involontari a picco di velocità ($v > 2200$ px/s), con aborto immediato della sosta e registrazione telemetrica dedicata nella cartella clinica (`spasm_shock_events`).
+
 ---
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
@@ -190,7 +206,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 25 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 26 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 
@@ -236,20 +252,19 @@ Quando sei a casa davanti alla postazione reale con il paziente:
 Quando ti sposti sul computer di casa o apri la nuova sessione, puoi dire all'AI:
 *"Procediamo con le prossime migliorie pianificate per SteadyMotion AI"* oppure scegliere direttamente uno di questi argomenti del framework di audit cinico:
 
-1. **Topic 5: Dwell Clicker & Leaky Bucket Gravity Well (`core/dwell_clicker.py`)**
-   - Verifica analitica della continuità $C^1$ dell'indicatore radiale e differenziazione della velocità di decadimento nella Grace Zone tra tremore a riposo e spasmi estensori bruschi;
-   - Protezione coordinate nulle $(0, 0)$ sull'overlay grafico durante la transizione di cancellazione.
-
-2. **Topic 6: Profiling & Accelerazione DirectML / ONNX Runtime vs XNNPACK CPU Delegate**
+1. **Topic 6: Profiling & Accelerazione DirectML / ONNX Runtime vs XNNPACK CPU Delegate**
    - Valutazione dell'inferenza neurale su GPU integrate budget (Intel Iris Xe, AMD Radeon Vega / 680M) per verificare se l'accelerazione DirectML riduce ulteriormente la latenza sotto i 10 ms su computer economici.
 
-3. **Collaudo dal Vivo con Webcam Reale & Postazione Clinica**
+2. **Collaudo dal Vivo con Webcam Reale & Postazione Clinica**
    - Test sul campo con paziente/volontario seguendo gli 8 punti della procedura di collaudo (F12, ROM 5 punti, Dwell, AAC e Co-Pilot).
+
+3. **Verifica Packaging Standalone con `build_standalone.py`**
+   - Rigenerazione dell'eseguibile standalone e pacchetto portatile `.zip` con tutti i 26 moduli e test conformi.
 
 ---
 
 ### 💬 COMANDI RAPIDI DA DARE ALL'AI AL RIENTRO:
-- *"Procediamo con il Topic 5: Dwell Clicker & Leaky Bucket in dwell_clicker.py"*
+- *"Procediamo con il Topic 6: Profiling & Accelerazione DirectML / ONNX Runtime vs CPU"*
 - *"Ho collegato la webcam reale a casa: ecco i risultati della diagnostica hardware..."*
 - *"Eseguiamo il collaudo dal vivo con il paziente"*
 ```

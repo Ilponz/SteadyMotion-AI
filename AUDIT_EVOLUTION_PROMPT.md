@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **25 su 25 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **28 su 28 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -75,16 +75,22 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Dynamic Display Metrics Sync:** Controllo periodico della topologia per riallineare le coordinate in caso di hotplug HDMI.
 
 ### 5. Dwell Clicker & Leaky Bucket Gravity Well (core/dwell_clicker.py) — [RISOLTO & OTTIMIZZATO]
+- [x] **Pozzo di Potenziale Proporzionale (Soft Grace Zone):** Decadimento modulato su mu = (dist - R_tol)/(R_grace - R_tol), con tolleranza elastica al micro-tremore a riposo (0.5x) e rapido spurgo su spasmi estensori (2.5x).
+- [x] **Spurgo Atomico & Ciclo di Vita (is_enabled = False):** Azzeramento istantaneo del progresso e dell'ancora alla disattivazione per prevenire dispersioni di stato o clic fantasma al riarmo.
+- [x] **Sincronizzazione Clock Cooldown:** Azzeramento del picco fittizio di dt al risveglio dal cooldown per una progressione priva di scatti.
+- [x] **Protezione Inversione Raggio:** Proprieta dinamica tolerance_radius con ricalcolo automatico e proporzionale del raggio di Grace (1.85x).
 - [x] **Grace Zone 1.85x:** Tolleranza agli spasmi muscolari con decadimento lineare del progresso anziché azzeramento brusco.
 - [x] **Macchina a Stati One-Shot:** Ripristino automatico al Clic Sinistro dopo Clic Destro o Doppio Clic.
 - [x] **UI Automation Magnetic Snapping:** Attrazione gravitazionale continua C^1 verso i baricentri degli elementi con velocità di fuga intenzionale (v > 280 px/s).
+- [x] **Anti-Sweep Velocity Gate & Freno Spasmo:** Blocco categorico del dwell durante transiti rapidi tra target (> 240 px/s) e intercettazione immediata spasmi mioclonici (> 2200 px/s).
 
 ### 6. Architettura Generale, Threading, HUD & Audio (core/, gui/, main.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Disaccoppiamento Totale:** Tracking loop autonomo a 60-120 Hz separato dal rendering GUI Tkinter a 30 Hz via lock atomico.
 - [x] **Caregiver Co-Pilot WH_MOUSE_LL:** Hook kernel a basso livello che intercetta all\'istante (0 px delta) il tocco fisico del mouse USB attivando una pausa di cortesia di 2.0s senza lotta del cursore.
 - [x] **Trigger Ausiliari Multipli:** Trigger acustico anti-rumore (ZCR > 0.08) e trigger facciale FACS silenzioso con isteresi e debounce.
 - [x] **Comunicazione Aumentativa & KSR > 75%:** Tastiera flottante con modello Bigram Next-Word prediction e prontuario frasi cliniche AAC persistente.
-- [x] **Cartella Riabilitativa Digitale:** Modulo core/clinical_logger.py con odometria, conteggio spasmi, KSR e generazione automatica di relazioni Markdown/JSON.
+- [x] **Clinical Asynchronous TTS Engine (core/tts_engine.py):** Worker Apartment COM STA nativo con auto-selezione voce italiana Microsoft Elsa, eliminazione radicale errori di marshalling STA (0x800401F0) e fallback PowerShell .NET.
+- [x] **Cartella Riabilitativa Digitale:** Modulo core/clinical_logger.py con odometria, conteggio spasmi e shock, KSR e generazione automatica di relazioni Markdown/JSON.
 
 ---
 

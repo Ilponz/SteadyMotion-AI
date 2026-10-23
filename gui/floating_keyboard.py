@@ -17,12 +17,7 @@ import customtkinter as ctk
 
 from core.word_predictor import WordPredictor
 from core.phrasebook import PhrasebookManager
-
-try:
-    import win32com.client
-    HAS_SAPI = True
-except Exception:
-    HAS_SAPI = False
+from core.tts_engine import TTSEngine
 
 
 class FloatingKeyboardWindow(ctk.CTkToplevel):
@@ -44,13 +39,8 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         self.attributes("-topmost", True)
         self.configure(fg_color="#0F172A")
 
-        # Motore Sintesi Vocale
-        self.speaker = None
-        if HAS_SAPI:
-            try:
-                self.speaker = win32com.client.Dispatch("SAPI.SpVoice")
-            except Exception:
-                self.speaker = None
+        # Motore Sintesi Vocale Clinico Asincrono (Zero Marshalling Error)
+        self.tts = TTSEngine(rate=0, volume=100)
 
         # Motore Predittivo Intelligente (AAC Word Predictor)
         self.word_predictor = WordPredictor()
@@ -504,18 +494,12 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             self._speak_phrase(text)
 
     def _speak_phrase(self, text: str):
-        if not self.speaker:
-            return
-
-        def _worker():
-            try:
-                self.speaker.Speak(text)
-            except Exception:
-                pass
-
-        threading.Thread(target=_worker, daemon=True, name="TTSThread").start()
+        if hasattr(self, "tts") and self.tts:
+            self.tts.speak(text, interrupt=True)
 
     def _on_close(self):
+        if hasattr(self, "tts") and self.tts:
+            self.tts.stop()
         if self.on_close_callback:
             self.on_close_callback()
         self.destroy()

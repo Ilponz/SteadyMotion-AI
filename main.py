@@ -79,12 +79,13 @@ class SteadyMotionApp:
             deadzone_radius=self.deadzone,
         )
 
-        # Dwell Clicker con tolleranza Leaky Bucket
+        # Dwell Clicker con tolleranza Leaky Bucket, Anti-Sweep Gate e Freno Spasmo
         self.dwell_clicker = DwellClicker(
             dwell_time=0.65,
             tolerance_radius=24.0,
             click_callback=self._on_dwell_click,
             progress_callback=self._on_dwell_progress,
+            spasm_callback=self._on_spasm_shock,
         )
 
         # Trigger Acustico Ausiliario (Microfono Webcam)
@@ -211,6 +212,10 @@ class SteadyMotionApp:
         if not self.is_paused:
             self.mouse.click("left")
             self.audio_feedback.play("click_left")
+
+    def _on_spasm_shock(self):
+        """Registra un picco di spasmo motorio acuto nella cartella clinica."""
+        self.clinical_logger.record_spasm_shock()
 
     def toggle_demo(self, enabled: bool):
         """Attiva o disattiva la modalità demo di simulazione cefalica."""
