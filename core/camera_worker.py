@@ -3,13 +3,17 @@ Thread di acquisizione video ad altissima efficienza e sincronizzazione hardware
 Ottimizzazioni implementate:
 1. Sblocco a 60 FPS su bus USB tramite codec MJPG (FourCC) e negoziazione backend Win32 (DSHOW/MSMF).
 2. Forzatura del buffer driver a 1 frame (azzeramento code driver OS).
-3. Triple Buffering circolare lock-free protetto:
+3. Zero Heap Churn Ingestion: riutilizzo rigoroso del buffer pre-allocato self._raw_capture_buf
+   in cap.read(image=...) eliminando 55 MB/s di allocazioni dinamiche al secondo nel runtime C++.
+4. Triple Buffering circolare lock-free protetto:
    - Buffer 0: slot di scrittura hardware (driver webcam);
    - Buffer 1: slot dell'ultimo frame completato;
    - Buffer 2: slot di lettura attiva da parte del consumer (MediaPipe);
    Nessuna contesa o sovrascrittura di frame in corso di analisi. Zero allocazioni heap a 60 Hz.
-4. Sincronizzazione hardware reattiva basata su threading.Event: il consumatore si risveglia
-   all'esatto istante dell'interrupt hardware, eliminando il polling e le inferenze duplicate.
+5. Sincronizzazione hardware reattiva basata su threading.Event protetta da lock: il consumatore si risveglia
+   all'esatto istante dell'interrupt hardware, eliminando il polling, frame persi e inferenze duplicate.
+6. Fallback resiliente DirectShow -> Media Foundation (MSMF) con test pre-flight sul primo frame
+   e salvaguardia dell'auto-esposizione per prevenire cali a 30 FPS o fotogrammi neri.
 """
 
 import threading
@@ -42,6 +46,9 @@ class CameraWorker:
         self.is_running = False
         self.thread: Optional[threading.Thread] = None
 
+        # Buffer di cattura grezzo pre-allocato (Zero Heap Churn in cap.read)
+        self._raw_capture_buf: np.ndarray = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+
         # Triple Buffering Pre-Allocato (Zero Allocazioni durante il ciclo)
         self._buffers = [
             np.zeros((target_height, target_width, 3), dtype=np.uint8),
@@ -66,37 +73,51 @@ class CameraWorker:
         self.fps_counter: int = 0
         self.fps_timer: float = time.perf_counter()
 
-    def start(self) -> bool:
-        """Inizializza la webcam con backend DirectShow / MSMF e avvia il thread di cattura."""
-        # 1. Prova backend nativo DirectShow per controllo a basso livello su Windows
-        self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
-        if not self.cap.isOpened():
-            # 2. Fallback su Windows Media Foundation (MSMF)
-            self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_MSMF)
-            if not self.cap.isOpened():
-                # 3. Fallback generico
-                self.cap = cv2.VideoCapture(self.camera_index)
-                if not self.cap.isOpened():
-                    return False
-
-        # Configurazione FourCC per sbloccare il framerate massimo su USB
-        if self.use_mjpg:
-            fourcc_mjpg = cv2.VideoWriter_fourcc(*"MJPG")
-            self.cap.set(cv2.CAP_PROP_FOURCC, fourcc_mjpg)
-
-        # Configurazione risoluzione e framerate
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.target_width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.target_height)
-        self.cap.set(cv2.CAP_PROP_FPS, self.target_fps)
-
-        # Fondamentale: buffer a 1 per azzerare il ritardo accumulato nel driver
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-        # Ottimizzazione esposizione (priorità al framerate costante)
+    def _init_capture(self, backend: int) -> Optional[cv2.VideoCapture]:
+        """Tenta l'inizializzazione del backend video con configurazione MJPG e test primo frame."""
         try:
-            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+            cap = cv2.VideoCapture(self.camera_index, backend)
+            if not cap.isOpened():
+                return None
+
+            if self.use_mjpg:
+                fourcc_mjpg = cv2.VideoWriter_fourcc(*"MJPG")
+                cap.set(cv2.CAP_PROP_FOURCC, fourcc_mjpg)
+
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.target_width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.target_height)
+            cap.set(cv2.CAP_PROP_FPS, self.target_fps)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+            # Negoziazione fall-safe dell'auto-esposizione:
+            # Evita di forzare 0.25 se non supportato per non produrre frame neri
+            try:
+                cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
+            except Exception:
+                pass
+
+            # Pre-flight check: verifica che cap.read() estragga un frame valido
+            ret, _ = cap.read()
+            if not ret:
+                cap.release()
+                return None
+
+            return cap
         except Exception:
-            pass
+            return None
+
+    def start(self) -> bool:
+        """Inizializza la webcam con negoziazione DirectShow / MSMF e avvia il thread di cattura."""
+        # 1. Prova backend nativo DirectShow per controllo a basso livello su Windows
+        self.cap = self._init_capture(cv2.CAP_DSHOW)
+        if self.cap is None:
+            # 2. Fallback su Windows Media Foundation (MSMF)
+            self.cap = self._init_capture(cv2.CAP_MSMF)
+            if self.cap is None:
+                # 3. Fallback generico standard
+                self.cap = self._init_capture(cv2.CAP_ANY)
+                if self.cap is None:
+                    return False
 
         # Lettura parametri effettivi negoziati dal driver
         self.negotiated_fps = self.cap.get(cv2.CAP_PROP_FPS)
@@ -109,6 +130,7 @@ class CameraWorker:
         if actual_w > 0 and actual_h > 0 and (actual_w != self.target_width or actual_h != self.target_height):
             self.target_width = actual_w
             self.target_height = actual_h
+            self._raw_capture_buf = np.zeros((actual_h, actual_w, 3), dtype=np.uint8)
             self._buffers = [
                 np.zeros((actual_h, actual_w, 3), dtype=np.uint8),
                 np.zeros((actual_h, actual_w, 3), dtype=np.uint8),
@@ -122,11 +144,10 @@ class CameraWorker:
 
     def _capture_loop(self):
         """Ciclo continuo di cattura hardware a zero allocazioni dinamiche."""
-        raw_frame = None
-
         while self.is_running and self.cap is not None:
-            ret, raw_frame = self.cap.read()
-            if not ret or raw_frame is None:
+            # Cattura diretta nel buffer pre-allocato (Zero Heap Churn)
+            ret, _ = self.cap.read(image=self._raw_capture_buf)
+            if not ret or self._raw_capture_buf is None:
                 time.sleep(0.001)
                 continue
 
@@ -134,16 +155,16 @@ class CameraWorker:
 
             # Scrive nel buffer di scrittura corrente
             target_buf = self._buffers[self._write_idx]
-            if raw_frame.shape == target_buf.shape:
+            if self._raw_capture_buf.shape == target_buf.shape:
                 if self.mirror_image:
-                    cv2.flip(raw_frame, 1, dst=target_buf)
+                    cv2.flip(self._raw_capture_buf, 1, dst=target_buf)
                 else:
-                    np.copyto(target_buf, raw_frame)
+                    np.copyto(target_buf, self._raw_capture_buf)
             else:
                 if self.mirror_image:
-                    target_buf = cv2.flip(raw_frame, 1)
+                    target_buf = cv2.flip(self._raw_capture_buf, 1)
                 else:
-                    target_buf = raw_frame.copy()
+                    target_buf = self._raw_capture_buf.copy()
                 self._buffers[self._write_idx] = target_buf
 
             # Swap atomico protetto: seleziona il prossimo slot di scrittura libero
@@ -160,8 +181,8 @@ class CameraWorker:
                         self._write_idx = idx
                         break
 
-            # Segnala istantaneamente al consumatore che è pronto un nuovo fotogramma
-            self.frame_ready_event.set()
+                # Segnala al consumatore mentre si detiene il lock per evitare race condition
+                self.frame_ready_event.set()
 
             # Calcolo FPS effettivi e campionamento luminosità media Luma (sub-sample leggero)
             self.fps_counter += 1
@@ -171,7 +192,7 @@ class CameraWorker:
                 self.fps_timer = t_now
                 # Stima Luma istantanea senza carico CPU (< 0.05 ms su griglia 20x20)
                 try:
-                    self.current_luma = float(np.mean(raw_frame[::24, ::32]))
+                    self.current_luma = float(np.mean(target_buf[::24, ::32]))
                 except Exception:
                     pass
 
@@ -181,9 +202,10 @@ class CameraWorker:
         Evita qualsiasi polling o consumo inutile di cicli CPU.
         """
         signaled = self.frame_ready_event.wait(timeout=timeout)
-        self.frame_ready_event.clear()
 
         with self.lock:
+            self.frame_ready_event.clear()
+
             if not self._frame_ready or self._latest_ready_idx < 0:
                 return False, None, 0.0, 0
 
@@ -236,3 +258,4 @@ class CameraWorker:
                     available.append(idx)
                     cap_m.release()
         return available
+

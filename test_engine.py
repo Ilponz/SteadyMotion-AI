@@ -29,6 +29,7 @@ from core.ballistics import BallisticTransfer
 from core.copilot import CaregiverCoPilot
 from core.gesture_trigger import GestureTrigger
 from core.phrasebook import PhrasebookManager
+from core.clinical_logger import ClinicalSessionLogger
 from gui.hud_overlay import HUD_THEMES, DwellHUD
 
 
@@ -819,6 +820,74 @@ def test_camera_worker_hot_swap():
     print(">>> TEST 21 SUPERATO! <<<")
 
 
+def test_clinical_session_logger_and_report_generation():
+    print("\n--- TEST 22: Telemetria Clinica, Keystroke Savings (KSR) & Cartella Riabilitativa ---")
+    tmp_reports = "reports_test_tmp"
+    logger = ClinicalSessionLogger(reports_dir=tmp_reports)
+
+    t0 = 1000.0
+    logger._last_state_time = t0
+    logger.start_timestamp = t0
+
+    # 1. Transizioni di stato (Standby -> Tracking Attivo)
+    logger.set_tracking_state(True, now=t0 + 10.0)  # 10s di standby
+    logger.set_tracking_state(False, now=t0 + 70.0)  # 60s di active tracking
+    assert abs(logger.standby_sec - 10.0) < 1e-4, "Standby time errato"
+    assert abs(logger.active_tracking_sec - 60.0) < 1e-4, "Active tracking time errato"
+    print("Accumulo Tempi Attivo/Standby: 100% Preciso (60s attivo, 10s standby)")
+
+    # 2. Odometria cefalica del cursore
+    logger.set_tracking_state(True, now=t0 + 75.0)
+    logger.record_cursor_movement(100.0, 100.0)
+    logger.record_cursor_movement(130.0, 140.0)  # delta: dx=30, dy=40 -> dist=50 px
+    assert abs(logger.total_cursor_distance_px - 50.0) < 1e-4, "Distanza cursore errata"
+    # Anti-teletrasporto (salto di ricentratura > 500 px)
+    logger.record_cursor_movement(900.0, 900.0)
+    assert abs(logger.total_cursor_distance_px - 50.0) < 1e-4, "Salto di ricentratura non deve alterare l'odometria"
+    print("Odometria Cefalica & Filtro Anti-Teletrasporto: 100% Conforme")
+
+    # 3. Metriche interazioni motorie
+    for _ in range(8):
+        logger.record_dwell_click("left")
+    for _ in range(2):
+        logger.record_dwell_aborted()
+    logger.record_copilot_override()
+    logger.record_acoustic_click()
+    logger.record_gesture_click("smile")
+
+    # 4. Metriche Comunicazione Aumentativa (CAA) e KSR
+    # Scrittura: 10 caratteri manuali + 2 parole completate via predittore
+    logger.record_typing(raw_chars=10)
+    logger.record_prediction_used(full_word="DOLORE", prefix_len=1)  # len 6 + 1 spc = 7; saved = 7 - 1 - 1 = 5
+    logger.record_prediction_used(full_word="AIUTO", prefix_len=0)   # len 5 + 1 spc = 6; saved = 6 - 0 - 1 = 5
+    ksr = logger.get_ksr()
+    print(f"KSR Calcolato: {ksr:.1f}%")
+    assert ksr > 40.0, "KSR deve riflettere il risparmio di battute"
+
+    # 5. Monitor Ergonomico
+    logger.record_ergonomic_alert("Caduta Cefalica Anteriore (Head-Drop)")
+    logger.record_ergonomic_alert("Inclinazione Laterale Eccessiva (Tilt)")
+    assert logger.head_drop_alerts == 1
+    assert logger.lateral_tilt_alerts == 1
+
+    # 6. Generazione e Salvataggio Report Cartella Clinica
+    md_path, json_path = logger.save_report(patient_id="Audit-Paziente-SLA", notes="Paziente responsivo, ottima aderenza al Dwell.")
+    assert os.path.exists(md_path) and os.path.exists(json_path), "I file di report non sono stati creati"
+
+    with open(md_path, "r", encoding="utf-8") as f:
+        md_text = f.read()
+    assert "STEADYMOTION AI — RELAZIONE CLINICA DI SESSIONE" in md_text
+    assert "Audit-Paziente-SLA" in md_text
+    assert "Keystroke Savings Rate (KSR)" in md_text
+    print(f"Generazione Cartella Clinica Markdown & JSON: {md_path}")
+
+    # Pulizia cartella temporanea
+    import shutil
+    shutil.rmtree(tmp_reports, ignore_errors=True)
+
+    print(">>> TEST 22 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -841,8 +910,9 @@ if __name__ == "__main__":
     test_copilot_low_level_hook_and_display_sync()
     test_clinical_phrasebook_manager()
     test_camera_worker_hot_swap()
+    test_clinical_session_logger_and_report_generation()
     print("\n========================================================")
-    print("TUTTI I 21 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 22 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

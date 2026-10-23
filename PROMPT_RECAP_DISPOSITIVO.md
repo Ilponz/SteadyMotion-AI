@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (21 su 21 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (22 su 22 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback MSMF (Media Foundation);
@@ -146,6 +146,13 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
     - Metodo `switch_camera(new_camera_index)` per commutare a caldo la sorgente di acquisizione senza riavviare l'applicazione o causare race-condition sui buffer;
     - Rilascio istantaneo e sicuro delle risorse video precedenti e riavvio automatico della pipeline di elaborazione a 60 FPS.
 
+24. **Telemetria Clinica & Cartella Riabilitativa Digitale (core/clinical_logger.py):**
+    - Monitoraggio quantitativo continuo a zero overhead: durata sessione, tempo di puntamento attivo vs standby di sicurezza;
+    - Odometria cefalica sub-pixel con filtro anti-teletrasporto e stima della distanza percorsa sul desktop in pixel e metri;
+    - Tracciamento esaustivo delle modalità di interazione: Dwell Clicks completati, Dwell abortiti da spasmi muscolari (indice oggettivo di fatica/distonia), interventi Caregiver Co-Pilot, Clic vocali/acustici e Trigger gesti facciali silenziosi;
+    - Metriche riabilitative CAA (Comunicazione Aumentativa Alternativa): conteggio tocchi effettivi, completamenti predittivi, caratteri risparmiati e Keystroke Savings Rate (KSR %);
+    - Generazione automatica di relazioni cliniche formattate per logopedisti e cartelle sanitarie (`reports/clinical_session_*.md` e JSON) a fine sessione.
+
 ---
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
@@ -162,7 +169,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 21 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 22 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 

@@ -21,6 +21,7 @@ import customtkinter as ctk
 from core.acoustic_trigger import AcousticTrigger
 from core.ballistics import BallisticTransfer
 from core.camera_worker import CameraWorker
+from core.clinical_logger import ClinicalSessionLogger
 from core.copilot import CaregiverCoPilot
 from core.dsp_filter import PointFilter2D
 from core.dwell_clicker import DwellClicker
@@ -362,6 +363,7 @@ class SteadyMotionApp:
     def _on_dwell_click(self, action: str, x: int, y: int):
         if self.is_paused:
             return
+        self.clinical_logger.record_dwell_click(action)
         if action == "left":
             self.mouse.click("left")
             self.audio_feedback.play("click_left")
@@ -399,6 +401,7 @@ class SteadyMotionApp:
     def _on_acoustic_click(self):
         """Genera un clic immediato all'impulso acustico."""
         if not self.is_paused:
+            self.clinical_logger.record_acoustic_click()
             self.mouse.click("left")
             self.audio_feedback.play("click_left")
 
@@ -429,6 +432,7 @@ class SteadyMotionApp:
 
     def toggle_pause(self):
         self.is_paused = not self.is_paused
+        self.clinical_logger.set_tracking_state(not self.is_paused)
         if self.is_paused:
             self.hud.hide()
             self.audio_feedback.play("pause")
@@ -501,6 +505,7 @@ class SteadyMotionApp:
                     if not is_overridden:
                         self.mouse.move_to_pixel(snap_x, snap_y)
                         self.copilot.record_injection(snap_x, snap_y)
+                        self.clinical_logger.record_cursor_movement(snap_x, snap_y)
                         self.dwell_clicker.update(snap_x, snap_y, t_now)
 
                 with self.telemetry_lock:
@@ -540,6 +545,8 @@ class SteadyMotionApp:
 
                 if face_detected:
                     ergo_st = self.ergonomics_monitor.update(yaw, pitch, roll, now=t_now)
+                    if ergo_st and ergo_st.is_fatigued:
+                        self.clinical_logger.record_ergonomic_alert(ergo_st.fatigue_reason)
                     if not self.is_paused:
                         self.gesture_trigger.process_blendshapes(
                             jaw_open_score=res.jaw_open_score,
@@ -565,6 +572,7 @@ class SteadyMotionApp:
                     if not is_overridden:
                         self.mouse.move_to_pixel(snap_x, snap_y)
                         self.copilot.record_injection(snap_x, snap_y)
+                        self.clinical_logger.record_cursor_movement(snap_x, snap_y)
                         self.dwell_clicker.update(snap_x, snap_y, t_now)
 
             with self.telemetry_lock:
@@ -647,6 +655,10 @@ class SteadyMotionApp:
         self.camera.stop()
         self.acoustic.stop()
         self.hud.hide()
+        try:
+            self.clinical_logger.save_report(patient_id="Paziente-01")
+        except Exception:
+            pass
         self.root.destroy()
         sys.exit(0)
 
