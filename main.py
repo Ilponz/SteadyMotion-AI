@@ -560,6 +560,11 @@ class SteadyMotionApp:
                             now=t_now,
                         )
 
+                # Freno di emergenza fisiologico: chiusura volontaria degli occhi annulla istantaneamente il Dwell in corso
+                if face_detected and is_blinking and self.dwell_clicker.progress > 0.0:
+                    self.clinical_logger.record_dwell_aborted()
+                    self.dwell_clicker.cancel()
+
                 # Iniezione mouse e Clic a sosta eseguiti SOLO se armato (non in pausa)
                 if face_detected and not is_blinking and not self.is_paused:
                     norm_x, norm_y = self.ballistics.compute_normalized_xy(

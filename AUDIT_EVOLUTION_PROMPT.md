@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **24 su 24 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **25 su 25 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.

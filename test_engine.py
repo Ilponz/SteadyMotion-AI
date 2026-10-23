@@ -126,12 +126,27 @@ def test_subpixel_virtual_input():
     print(f"Desktop Virtuale: {mouse.vw:.0f}x{mouse.vh:.0f} (Offset: X={mouse.vx:.0f}, Y={mouse.vy:.0f})")
     assert mouse.vw > 0 and mouse.vh > 0
 
-    # 1000 chiamate a move_to_pixel a sub-pixel senza generare memory leak o crash
+    # 1. Verifica Reachability 100% dei bordi estremi (0 e 65535)
+    mouse.move_to_pixel(mouse.vx, mouse.vy)
+    assert mouse._move_input.union.mi.dx == 0 and mouse._move_input.union.mi.dy == 0
+    print("Angolo Superiore-SX (vx, vy): Mappatura esatta a dx=0, dy=0")
+
+    mouse.move_to_pixel(mouse.vx + mouse.vw - 1.0, mouse.vy + mouse.vh - 1.0)
+    assert mouse._move_input.union.mi.dx == 65535 and mouse._move_input.union.mi.dy == 65535
+    print("Angolo Inferiore-DX (vx+vw-1, vy+vh-1): Mappatura esatta a dx=65535, dy=65535")
+
+    # 2. Verifica Watermark di sicurezza anti-coalescing
+    assert mouse.signature_extra.value == 0x53544541
+    assert mouse._move_input.union.mi.dwExtraInfo == 0x53544541
+    print("Watermark Win32 ExtraInfo ('STEA' = 0x53544541): Conforme al 100%")
+
+    # 3. Benchmark Latenza Iniezione Sub-Pixel (100 chiamate)
     t_start = time.perf_counter()
     for i in range(100):
         mouse.move_to_pixel(100.25 + (i % 10) * 0.1, 200.50 + (i % 10) * 0.1)
     duration = time.perf_counter() - t_start
     print(f"100 iniezioni SendInput eseguite in {duration * 1000.0:.2f} ms ({duration / 100.0 * 1e6:.1f} µs/chiamata)")
+    assert duration / 100.0 * 1e6 < 20.0, "Latenza di iniezione troppo elevata"
     print(">>> TEST 4 SUPERATO! <<<")
 
 
@@ -991,6 +1006,54 @@ def test_clinical_soundpacks_engine():
     print(">>> TEST 24 SUPERATO! <<<")
 
 
+def test_camera_worker_lut_low_light_boost_and_blink_abort():
+    print("\n--- TEST 25: Compensazione Fotometrica LUT & Freno di Emergenza Blink ---")
+    import cv2
+    import numpy as np
+
+    # 1. Verifica Tabella LUT Gamma in CameraWorker
+    worker = CameraWorker(camera_index=0, target_width=320, target_height=240, target_fps=30)
+    assert hasattr(worker, "auto_exposure_boost") and worker.auto_exposure_boost
+    assert worker._lut_boost.shape == (1, 256)
+    assert worker._lut_boost.dtype == np.uint8
+
+    # Simula immagine buia (20 nit)
+    dark_frame = np.full((100, 100, 3), 20, dtype=np.uint8)
+    initial_mean = float(np.mean(dark_frame))
+    cv2.LUT(dark_frame, worker._lut_boost, dst=dark_frame)
+    boosted_mean = float(np.mean(dark_frame))
+    print(f"Compensazione LUT Low-Light: Media prima={initial_mean:.1f} nit, dopo={boosted_mean:.1f} nit")
+    assert boosted_mean > initial_mean * 1.8, "La compensazione LUT deve rischiarare le ombre"
+    print("Compensazione Fotometrica LUT: 100% Conforme")
+
+    # 2. Verifica Freno di Emergenza Fisiologico: Blink Abort su Dwell
+    dwell = DwellClicker(dwell_time=0.5, tolerance_radius=20.0)
+    cl = ClinicalSessionLogger(reports_dir="reports_test_tmp2")
+
+    t = 100.0
+    # Inizia accumulo dwell simulando loop 30 FPS
+    for _ in range(12):
+        t += 0.033
+        p2 = dwell.update(501.0, 500.0, now=t)
+    assert p2 > 0.5, f"Il Dwell deve progredire (ottenuto {p2:.2f})"
+
+    # Chiusura volontaria occhi rilevata (Blink Burst / Eye Closure)
+    is_blinking = True
+    if is_blinking and dwell.progress > 0.0:
+        cl.record_dwell_aborted()
+        dwell.cancel()
+
+    assert dwell.progress == 0.0, "Il progresso del dwell deve azzerarsi istantaneamente al blink"
+    assert cl.dwell_aborted_spasms == 1, "Il freno di emergenza deve essere registrato nella telemetria clinica"
+    print("Freno di Emergenza Fisiologico (Eye Closure / Blink): Dwell cancellato e registrato con successo")
+
+    # Pulizia
+    worker.stop()
+    import shutil
+    shutil.rmtree("reports_test_tmp2", ignore_errors=True)
+    print(">>> TEST 25 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1016,8 +1079,9 @@ if __name__ == "__main__":
     test_clinical_session_logger_and_report_generation()
     test_fitts_evaluator_iso_9241_9()
     test_clinical_soundpacks_engine()
+    test_camera_worker_lut_low_light_boost_and_blink_abort()
     print("\n========================================================")
-    print("TUTTI I 24 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 25 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

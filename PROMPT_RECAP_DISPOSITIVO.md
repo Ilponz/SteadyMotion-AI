@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (24 su 24 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (25 su 25 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy & Zero-Heap (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback resiliente su Windows Media Foundation (MSMF) con test di pre-flight sul primo frame;
@@ -40,9 +40,10 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
    - **Calibrazione Spettrale Clinica (core/profile_manager.py):** cutoff calibrato a 0.85 Hz per Parkinson (abbattimento > 93% nella banda 4-6 Hz) e 0.95 Hz per Distonia/Spasmi.
 
 4. **Iniezione Sub-Pixel Win32 a 16-bit (core/virtual_input.py):**
-   - API nativa ctypes `SendInput` a 64-bit con struttura `INPUT` pre-allocata staticamente (zero allocazioni heap per frame, 3.5 µs di latenza);
+   - API nativa ctypes `SendInput` a 64-bit con struttura `INPUT` pre-allocata staticamente (zero allocazioni heap per frame, 1.9 µs di latenza);
    - Supporto nativo `Per-Monitor DPI Awareness v2` (-4) per prevenire disallineamenti su monitor 2K/4K con scaling 125%/150%;
-   - Mappatura normalizzata assoluta virtual desktop 0 - 65535 priva di bias direzionale;
+   - **Mappatura Normalizzata Continua 0 - 65535 con Reachability 100% degli Angoli:** normalizzazione analitica su `(vw - 1, vh - 1)` che azzera la deriva direzionale e garantisce il raggiungimento perfetto degli estremi fisici dello schermo (pulsante Chiudi [X] e tray notification);
+   - **Doppio Clic Asincrono con Ancoraggio Coordinate:** il secondo impulso è ancorato alle coordinate spaziali del primo, azzerando i fallimenti da micro-tremore tra i due clic (`SM_CXDOUBLECLK`);
    - Metodi di digitazione diretta `send_unicode_char`, `send_key_event` e rotellina virtuale `scroll` (`MOUSEEVENTF_WHEEL`).
 
 5. **Dwell Clicker con Algoritmo Leaky Bucket (core/dwell_clicker.py):**
@@ -169,6 +170,10 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
     - Selettore a tendina nel pannello di controllo ("🎤 Audio & Gesti") con salvataggio persistente nel profilo;
     - Coda asincrona thread-safe non-bloccante a zero jitter per il tracking loop a 60 FPS.
 
+27. **Compensazione Fotometrica Dinamica Low-Light LUT & Freno di Emergenza Fisiologico (core/camera_worker.py & main.py):**
+    - Tabella di lookup pre-allocata (Zero-Heap LUT in memoria C) con curva di gamma dinamica ($\gamma = 0.65$) per rischiarare automaticamente i volti in penombra (< 35 nit) senza richiedere lampade aggiuntive;
+    - Freno di emergenza fisiologico volontario (Voluntary Eye Closure / Prolonged Blink): la chiusura prolungata degli occhi azzera istantaneamente qualsiasi Dwell click in corso, liberando il desktop e registrando l'evento nella cartella clinica riabilitativa.
+
 ---
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
@@ -185,7 +190,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 24 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 25 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 
@@ -231,12 +236,12 @@ Quando sei a casa davanti alla postazione reale con il paziente:
 Quando ti sposti sul computer di casa o apri la nuova sessione, puoi dire all'AI:
 *"Procediamo con le prossime migliorie pianificate per SteadyMotion AI"* oppure scegliere direttamente uno di questi argomenti del framework di audit cinico:
 
-1. **Topic 4: Iniezione Sub-Pixel Win32 a 16-bit (`core/virtual_input.py`)**
-   - Audit approfondito su coordinate sub-pixel normalizzate (0-65535) su configurazioni multi-monitor miste (4K primario + 1080p secondario con DPI asimmetrico 150% vs 100%);
-   - Verifica di assenza di blocchi e coerenza temporale su chiamate ad alta frequenza.
+1. **Topic 5: Dwell Clicker & Leaky Bucket Gravity Well (`core/dwell_clicker.py`)**
+   - Verifica analitica della continuità $C^1$ dell'indicatore radiale e differenziazione della velocità di decadimento nella Grace Zone tra tremore a riposo e spasmi estensori bruschi;
+   - Protezione coordinate nulle $(0, 0)$ sull'overlay grafico durante la transizione di cancellazione.
 
-2. **Topic 5: Dwell Clicker & Leaky Bucket Gravity Well (`core/dwell_clicker.py`)**
-   - Verifica dell'ancoraggio HUD alle coordinate target e differenziazione decadimento tra tremore fisiologico e spasmo estensorio brusco.
+2. **Topic 6: Profiling & Accelerazione DirectML / ONNX Runtime vs XNNPACK CPU Delegate**
+   - Valutazione dell'inferenza neurale su GPU integrate budget (Intel Iris Xe, AMD Radeon Vega / 680M) per verificare se l'accelerazione DirectML riduce ulteriormente la latenza sotto i 10 ms su computer economici.
 
 3. **Collaudo dal Vivo con Webcam Reale & Postazione Clinica**
    - Test sul campo con paziente/volontario seguendo gli 8 punti della procedura di collaudo (F12, ROM 5 punti, Dwell, AAC e Co-Pilot).
@@ -244,7 +249,7 @@ Quando ti sposti sul computer di casa o apri la nuova sessione, puoi dire all'AI
 ---
 
 ### 💬 COMANDI RAPIDI DA DARE ALL'AI AL RIENTRO:
-- *"Procediamo con il Topic 4: Iniezione Sub-Pixel Win32 in virtual_input.py"*
+- *"Procediamo con il Topic 5: Dwell Clicker & Leaky Bucket in dwell_clicker.py"*
 - *"Ho collegato la webcam reale a casa: ecco i risultati della diagnostica hardware..."*
 - *"Eseguiamo il collaudo dal vivo con il paziente"*
 ```

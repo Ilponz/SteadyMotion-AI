@@ -73,6 +73,12 @@ class CameraWorker:
         self.fps_counter: int = 0
         self.fps_timer: float = time.perf_counter()
 
+        # Auto-compensazione fotometrica dinamica per ambienti scarsamente illuminati (Zero-Heap LUT)
+        self.auto_exposure_boost: bool = True
+        self._lut_boost: np.ndarray = np.empty((1, 256), dtype=np.uint8)
+        for i in range(256):
+            self._lut_boost[0, i] = int(min(255, ((i / 255.0) ** 0.65) * 255.0))
+
     def _init_capture(self, backend: int) -> Optional[cv2.VideoCapture]:
         """Tenta l'inizializzazione del backend video con configurazione MJPG e test primo frame."""
         try:
@@ -166,6 +172,10 @@ class CameraWorker:
                 else:
                     target_buf = self._raw_capture_buf.copy()
                 self._buffers[self._write_idx] = target_buf
+
+            # Compensazione fotometrica dinamica automatica in condizioni di scarsa luce (< 35 nit)
+            if self.auto_exposure_boost and self.current_luma < 35.0:
+                cv2.LUT(target_buf, self._lut_boost, dst=target_buf)
 
             # Swap atomico protetto: seleziona il prossimo slot di scrittura libero
             with self.lock:

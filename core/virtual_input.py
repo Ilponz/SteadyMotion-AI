@@ -201,13 +201,16 @@ class WindowsMouseController:
         """
         Muove il cursore preservando le coordinate frazionarie sub-pixel.
         Esegue la mutazione diretta in memoria C senza alcuna allocazione heap in Python.
+        Garantisce reachability 100% fino all'ultimo pixel di bordo (0 e 65535).
         """
         clamped_x = max(self.vx, min(self.vx + self.vw - 1.0, float(x)))
         clamped_y = max(self.vy, min(self.vy + self.vh - 1.0, float(y)))
 
-        # Calcolo normalizzato sub-pixel a 16-bit
-        norm_x = int(round((clamped_x - self.vx) * 65535.0 / max(1.0, self.vw)))
-        norm_y = int(round((clamped_y - self.vy) * 65535.0 / max(1.0, self.vh)))
+        # Calcolo normalizzato sub-pixel a 16-bit su span effettivo (vw - 1, vh - 1)
+        span_w = max(1.0, self.vw - 1.0)
+        span_h = max(1.0, self.vh - 1.0)
+        norm_x = int(round((clamped_x - self.vx) * 65535.0 / span_w))
+        norm_y = int(round((clamped_y - self.vy) * 65535.0 / span_h))
 
         norm_x = max(0, min(65535, norm_x))
         norm_y = max(0, min(65535, norm_y))
@@ -246,11 +249,20 @@ class WindowsMouseController:
         user32.SendInput(2, inputs, self._input_size)
 
     def double_click(self):
-        """Esegue un doppio clic asincrono non bloccante (zero frame persi a 60 FPS)."""
+        """
+        Esegue un doppio clic asincrono non bloccante ancorato alle coordinate del primo clic.
+        Previene il fallimento del doppio clic dovuto al tremore tra i due impulsi (SM_CXDOUBLECLK).
+        """
+        pt = wintypes.POINT()
+        user32.GetCursorPos(ctypes.byref(pt))
+        target_x, target_y = float(pt.x), float(pt.y)
+
         self.click("left")
 
         def _delayed_second_click():
             time.sleep(0.08)
+            # Riposiziona brevemente sulle coordinate del primo clic per garantire la finestra di tolleranza Windows
+            self.move_to_pixel(target_x, target_y)
             self.click("left")
 
         threading.Thread(target=_delayed_second_click, daemon=True, name="AsyncDoubleClick").start()
