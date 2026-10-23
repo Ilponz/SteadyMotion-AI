@@ -98,19 +98,36 @@ class FaceTrackerEngine:
         self.neutral_ipd = max(0.05, ipd)
         self.is_calibrated = True
 
-    def _extract_euler_angles(self, matrix_4x4: np.ndarray) -> Tuple[float, float, float]:
-        """Decomposizione della matrice SO(3) nei tre angoli cardinali con protezione singolarità."""
-        r = matrix_4x4[:3, :3]
-        sy = math.sqrt(r[0, 0] * r[0, 0] + r[1, 0] * r[1, 0])
+    def _extract_euler_angles(self, matrix_4x4) -> Tuple[float, float, float]:
+        """Decomposizione della matrice SO(3) nei tre angoli cardinali con protezione singolarità (Zero-Heap)."""
+        if hasattr(matrix_4x4, "shape") and len(matrix_4x4.shape) == 2:
+            r00 = float(matrix_4x4[0, 0])
+            r10 = float(matrix_4x4[1, 0])
+            r20 = float(matrix_4x4[2, 0])
+            r21 = float(matrix_4x4[2, 1])
+            r22 = float(matrix_4x4[2, 2])
+            r12 = float(matrix_4x4[1, 2])
+            r11 = float(matrix_4x4[1, 1])
+        else:
+            # Sequenza piatta a 16 elementi in memoria C/MediaPipe
+            r00 = float(matrix_4x4[0])
+            r10 = float(matrix_4x4[4])
+            r20 = float(matrix_4x4[8])
+            r21 = float(matrix_4x4[9])
+            r22 = float(matrix_4x4[10])
+            r12 = float(matrix_4x4[6])
+            r11 = float(matrix_4x4[5])
+
+        sy = math.sqrt(r00 * r00 + r10 * r10)
         singular = sy < 1e-6
 
         if not singular:
-            pitch = math.atan2(r[2, 1], r[2, 2])
-            yaw = math.atan2(-r[2, 0], sy)
-            roll = math.atan2(r[1, 0], r[0, 0])
+            pitch = math.atan2(r21, r22)
+            yaw = math.atan2(-r20, sy)
+            roll = math.atan2(r10, r00)
         else:
-            pitch = math.atan2(-r[1, 2], r[1, 1])
-            yaw = math.atan2(-r[2, 0], sy)
+            pitch = math.atan2(-r12, r11)
+            yaw = math.atan2(-r20, sy)
             roll = 0.0
 
         return math.degrees(yaw), math.degrees(pitch), math.degrees(roll)
@@ -152,12 +169,11 @@ class FaceTrackerEngine:
 
         landmarks = result.face_landmarks[0]
 
-        # 1. Posa Cranica 3D Rigida con protezione di formato matrice
+        # 1. Posa Cranica 3D Rigida con protezione di formato matrice (Zero-Heap)
         yaw, pitch, roll = 0.0, 0.0, 0.0
         if result.facial_transformation_matrixes and len(result.facial_transformation_matrixes) > 0:
             try:
-                mat = np.array(result.facial_transformation_matrixes[0], dtype=np.float64).reshape((4, 4))
-                yaw, pitch, roll = self._extract_euler_angles(mat)
+                yaw, pitch, roll = self._extract_euler_angles(result.facial_transformation_matrixes[0])
             except Exception:
                 pass
 
@@ -175,20 +191,37 @@ class FaceTrackerEngine:
         raw_ipd_scale = self.neutral_ipd / max(0.04, current_ipd)
         ipd_scale = max(0.65, min(1.60, raw_ipd_scale))
 
-        # 3. Blendshapes FACS per Clamping e Comandi
-        blend_dict: Dict[str, float] = {}
-        if result.face_blendshapes and len(result.face_blendshapes) > 0:
-            for cat in result.face_blendshapes[0]:
-                blend_dict[cat.category_name] = cat.score
+        # 3. Blendshapes FACS per Clamping e Comandi (Zero-Heap O(N) Scan Diretto)
+        blink_l = 0.0
+        blink_r = 0.0
+        jaw_open = 0.0
+        smile_l = 0.0
+        smile_r = 0.0
+        brow_l = 0.0
+        brow_r = 0.0
 
-        blink_l = blend_dict.get("eyeBlinkLeft", 0.0)
-        blink_r = blend_dict.get("eyeBlinkRight", 0.0)
+        if result.face_blendshapes and len(result.face_blendshapes) > 0:
+            for b in result.face_blendshapes[0]:
+                c_name = b.category_name
+                if c_name == "eyeBlinkLeft":
+                    blink_l = b.score
+                elif c_name == "eyeBlinkRight":
+                    blink_r = b.score
+                elif c_name == "jawOpen":
+                    jaw_open = b.score
+                elif c_name == "mouthSmileLeft":
+                    smile_l = b.score
+                elif c_name == "mouthSmileRight":
+                    smile_r = b.score
+                elif c_name == "browDownLeft":
+                    brow_l = b.score
+                elif c_name == "browDownRight":
+                    brow_r = b.score
+
         blink_score = max(blink_l, blink_r)
         is_blinking = (blink_l > 0.40 and blink_r > 0.40) or blink_score > 0.60
-
-        jaw_open = blend_dict.get("jawOpen", 0.0)
-        smile = max(blend_dict.get("mouthSmileLeft", 0.0), blend_dict.get("mouthSmileRight", 0.0))
-        brow_down = max(blend_dict.get("browDownLeft", 0.0), blend_dict.get("browDownRight", 0.0))
+        smile = max(smile_l, smile_r)
+        brow_down = max(brow_l, brow_r)
 
         # 4. Gaze Micro-Correction via Iride (X e Y)
         iris_dx, iris_dy = 0.0, 0.0
