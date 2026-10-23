@@ -73,6 +73,9 @@ def build():
         if os.path.exists(os.path.join(BASE_DIR, "config")):
             shutil.copytree(os.path.join(BASE_DIR, "config"), dist_config)
 
+        # Cartella di destinazione per le relazioni cliniche riabilitative
+        os.makedirs(os.path.join(dist_dir, "reports"), exist_ok=True)
+
         # Copia script di avvio rapido, slide-deck e diagnostica caregiver nella cartella portatile
         for extra_file in (
             "Avvia_EXE_Standalone.bat",
