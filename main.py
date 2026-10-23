@@ -340,6 +340,8 @@ class SteadyMotionApp:
             self.acoustic.update_params(enabled=self.acoustic.is_enabled, threshold=float(value))
         elif param_name == "audio_feedback_enabled":
             self.audio_feedback.set_enabled(bool(value))
+        elif param_name == "soundpack":
+            self.audio_feedback.set_soundpack(str(value))
         elif param_name == "gamma":
             self.ballistics.update_params(gamma=float(value), is_enabled=self.ballistics.is_enabled)
         elif param_name == "ballistics_enabled":

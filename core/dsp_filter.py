@@ -70,6 +70,10 @@ class PointFilter2D:
         self.last_out_x: Optional[float] = None
         self.last_out_y: Optional[float] = None
 
+        # Cache temporale per derivata (Zero Overhead)
+        self._cached_dt: float = -1.0
+        self._cached_alpha_d: float = 0.5
+
     def update_params(self, min_cutoff: float, beta: float, deadzone: float):
         self.min_cutoff = max(0.1, min_cutoff)
         self.beta = max(0.0001, beta)
@@ -98,8 +102,12 @@ class PointFilter2D:
         dx = 0.0 if prev_x is None else (x - prev_x) / dt
         dy = 0.0 if prev_y is None else (y - prev_y) / dt
 
-        # Stima derivata filtrata
-        alpha_d = self._compute_alpha(self.d_cutoff, dt)
+        # Stima derivata filtrata con caching di alpha_d su dt costante
+        if abs(dt - self._cached_dt) > 1e-6:
+            self._cached_dt = dt
+            self._cached_alpha_d = self._compute_alpha(self.d_cutoff, dt)
+        alpha_d = self._cached_alpha_d
+
         edx = self.dx_filter.filter(dx, alpha_d)
         edy = self.dy_filter.filter(dy, alpha_d)
 
@@ -148,5 +156,8 @@ class PointFilter2D:
         self.last_time = None
         self.anchor_x = None
         self.anchor_y = None
+        self.last_out_x = None
+        self.last_out_y = None
+        self._cached_dt = -1.0
         self.last_out_x = None
         self.last_out_y = None

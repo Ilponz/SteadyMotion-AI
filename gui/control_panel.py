@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, Optional
 import customtkinter as ctk
 
 from core.profile_manager import ProfileManager
+from core.fitts_evaluator import FittsEvaluator
 
 # Configurazione iniziale di CustomTkinter
 ctk.set_appearance_mode("Dark")
@@ -136,8 +137,10 @@ class ControlPanel:
         # Preferenze Tema e Personalizzazione
         self.appearance_mode_str = tk.StringVar(value="Dark")
         self.ui_scale_str = tk.StringVar(value="100%")
+        self.soundpack_str = tk.StringVar(value="Standard (Bilanciato)")
 
-        # Stato addestramento e sandbox bersagli
+        # Valutatore Scientifico Fitts's Law ISO 9241-9 & Sandbox
+        self.fitts_evaluator = FittsEvaluator()
         self.targets_hit_count = 0
         self.targets_total = 5
 
@@ -464,11 +467,26 @@ class ControlPanel:
         self.target_grid.grid_columnconfigure(2, weight=1)
 
     def _on_hit_target(self, idx: int):
-        self._target_buttons[idx].configure(fg_color="#10b981", text="✅ COLPITO!")
+        btn = self._target_buttons[idx]
+        btn_w = float(btn.winfo_width()) if btn.winfo_width() > 0 else 120.0
+        bx = float(btn.winfo_rootx() + btn_w / 2.0)
+        by = float(btn.winfo_rooty() + float(btn.winfo_height()) / 2.0)
+
+        trial = self.fitts_evaluator.record_hit(target_id=idx, target_x=bx, target_y=by, target_width=btn_w)
+        tp_str = f"{trial.throughput:.1f} bit/s" if trial else ""
+
+        btn.configure(fg_color="#10b981", text=f"✅ {tp_str}")
         self.targets_hit_count += 1
-        self.lbl_score.configure(text=f"Bersagli: {self.targets_hit_count}/{self.targets_total}")
+        summary = self.fitts_evaluator.get_summary()
+
+        self.lbl_score.configure(
+            text=f"Bersagli: {self.targets_hit_count}/{self.targets_total} | TP: {summary['mean_throughput_bps']} bit/s"
+        )
         if self.targets_hit_count >= self.targets_total:
-            self.lbl_score.configure(text="🎉 OTTIMO! TUTTI I BERSAGLI COLPITI!", text_color="#38bdf8")
+            self.lbl_score.configure(
+                text=f"🎉 ISO 9241-9 Throughput: {summary['mean_throughput_bps']} bit/s (MT: {summary['mean_movement_time_sec']}s)",
+                text_color="#38bdf8",
+            )
 
     # ---------------- TAB 2: PUNTAMENTO & FILTRI ----------------
     def _build_tab_controls(self):
@@ -682,6 +700,30 @@ class ControlPanel:
         combo_gtype.pack(side="right")
 
         self._create_slider_row(card_gesture, "Soglia Attivazione (Sensibilità)", self.gesture_threshold_val, 0.25, 0.80, "gesture_threshold", "{:.2f}")
+
+        # Card Feedback Acustico & Soundpack Clinici
+        card_sp = ctk.CTkFrame(self.tab_audio, corner_radius=10)
+        card_sp.pack(fill="x", pady=4, padx=6)
+        ctk.CTkLabel(card_sp, text="FEEDBACK UDITIVO & SOUNDPACK CLINICO", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=10, pady=(6, 2))
+
+        row_sp = ctk.CTkFrame(card_sp, fg_color="transparent")
+        row_sp.pack(fill="x", padx=10, pady=(4, 6))
+        ctk.CTkLabel(row_sp, text="Profilo Acustico Clic:", font=ctk.CTkFont(family="Segoe UI", size=11)).pack(side="left")
+
+        combo_sp = ctk.CTkComboBox(
+            row_sp,
+            values=[
+                "Standard (Bilanciato)",
+                "Morbido / Grave (Iperacusia)",
+                "Alto Contrasto (Ambienti Rumorosi)",
+                "Subtle / Discreto",
+                "Silenzioso (Muto)",
+            ],
+            variable=self.soundpack_str,
+            command=self._on_soundpack_selected,
+            width=230,
+        )
+        combo_sp.pack(side="right")
 
     # ---------------- TAB 5: TRACK STATUS & RADAR POSTURALE ----------------
     def _build_tab_radar(self):
@@ -1002,6 +1044,18 @@ class ControlPanel:
         }
         raw_type = mapping.get(choice, "jaw_open")
         self.on_param_change("gesture_type", raw_type)
+
+    def _on_soundpack_selected(self, choice: str):
+        mapping = {
+            "Standard (Bilanciato)": "standard",
+            "Morbido / Grave (Iperacusia)": "mellow",
+            "Alto Contrasto (Ambienti Rumorosi)": "high_contrast",
+            "Subtle / Discreto": "subtle",
+            "Silenzioso (Muto)": "mute",
+        }
+        sp_id = mapping.get(choice, "standard")
+        self.on_param_change("soundpack", sp_id)
+        self._save_config()
 
     def update_rom_gains(self, gains: Dict[str, float], is_custom: bool = True):
         """Aggiorna le etichette e lo stato visivo della calibrazione Range of Motion."""

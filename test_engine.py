@@ -24,12 +24,13 @@ from core.utils import get_resource_path
 from core.word_predictor import WordPredictor
 from core.profile_manager import ProfileManager
 from core.ergonomics import ErgonomicsMonitor
-from core.audio_feedback import AudioFeedback
+from core.audio_feedback import AudioFeedback, SOUNDPACKS
 from core.ballistics import BallisticTransfer
 from core.copilot import CaregiverCoPilot
 from core.gesture_trigger import GestureTrigger
 from core.phrasebook import PhrasebookManager
 from core.clinical_logger import ClinicalSessionLogger
+from core.fitts_evaluator import FittsEvaluator
 from gui.hud_overlay import HUD_THEMES, DwellHUD
 
 
@@ -433,7 +434,14 @@ def test_audio_feedback_engine():
     print(f"Tempo di accodamento asincrono per 7 eventi sonori: {elapsed_ms:.4f} ms (< 0.5 ms target)")
     assert elapsed_ms < 1.0, f"Accodamento troppo lento: {elapsed_ms:.4f} ms"
 
-    # 2. Verifica disabilitazione mute
+    # 2. Verifica Soundpack Clinici Differenziati
+    packs = af.get_available_soundpacks()
+    assert len(packs) >= 4, "I soundpack clinici devono essere almeno 4"
+    assert af.set_soundpack("mellow") is True
+    assert af.soundpack_id == "mellow"
+    print(f"Soundpack Clinici Disponibili ({len(packs)}): {[p[0] for p in packs]}")
+
+    # 3. Verifica disabilitazione mute
     af.set_enabled(False)
     af.play("click_left")
     assert af._queue.qsize() <= len(sound_types), "A motore disabilitato non deve accodare suoni"
@@ -914,6 +922,75 @@ def test_clinical_session_logger_and_report_generation():
     print(">>> TEST 22 SUPERATO! <<<")
 
 
+def test_fitts_evaluator_iso_9241_9():
+    print("\n--- TEST 23: Valutatore Legge di Fitts & Throughput Motorio ISO 9241-9 ---")
+    fe = FittsEvaluator()
+
+    # Trial 1: target a distanza 300 px, larghezza target 60 px, movement time 1.0s
+    fe.start_trial(start_x=100.0, start_y=100.0, now=10.0)
+    trial = fe.record_hit(target_id=1, target_x=400.0, target_y=100.0, target_width=60.0, now=11.0)
+
+    assert trial is not None
+    # Distance = 300 px, Width = 60 px
+    # ID = log2(300 / 60 + 1) = log2(6) = 2.58496 bit
+    expected_id = math.log2(300.0 / 60.0 + 1.0)
+    assert abs(trial.index_of_difficulty - expected_id) < 1e-4
+    # Throughput = ID / MT = 2.58496 / 1.0 = 2.58496 bit/s
+    assert abs(trial.throughput - expected_id) < 1e-4
+    print(f"Indice di Difficoltà Shannon ID: {trial.index_of_difficulty:.3f} bit")
+    print(f"Throughput Motorio Calcolato: {trial.throughput:.2f} bit/s")
+
+    # Trial 2: target a distanza 150 px, larghezza target 30 px, movement time 0.8s
+    fe.start_trial(start_x=400.0, start_y=100.0, now=12.0)
+    fe.record_hit(target_id=2, target_x=550.0, target_y=100.0, target_width=30.0, now=12.8)
+
+    summary = fe.get_summary()
+    assert summary["total_trials"] == 2
+    assert summary["mean_throughput_bps"] > 0
+    print(f"Riepilogo ISO 9241-9: {summary['total_trials']} trial completati, Throughput medio: {summary['mean_throughput_bps']:.2f} bit/s")
+    print(">>> TEST 23 SUPERATO! <<<")
+
+
+def test_clinical_soundpacks_engine():
+    print("\n--- TEST 24: Motore Soundpack Clinici Differenziati (Iperacusia / Presbiacusia) ---")
+    # 1. Verifica Soundpack disponibili
+    available = AudioFeedback.get_available_soundpacks()
+    ids = [k for k, name in available]
+    assert "standard" in ids
+    assert "mellow" in ids
+    assert "high_contrast" in ids
+    assert "subtle" in ids
+    assert "mute" in ids
+    print(f"Soundpack clinici registrati (5/5): {ids}")
+
+    # 2. Istanziazione e commutazione
+    af = AudioFeedback(enabled=True, soundpack="standard")
+    assert af.soundpack_id == "standard"
+
+    # Mellow (Bassa frequenza per iperacusia)
+    ok_mellow = af.set_soundpack("mellow")
+    assert ok_mellow and af.soundpack_id == "mellow"
+    mellow_tones = SOUNDPACKS["mellow"]["tones"]["click_left"]
+    assert mellow_tones[0][0] <= 600, f"Frequenza mellow troppo alta: {mellow_tones[0][0]} Hz"
+    print("Soundpack 'Mellow' (Frequenza Grave <= 600 Hz per Iperacusia): 100% Conforme")
+
+    # High-contrast (Frequenza acuta penetrante per ambienti rumorosi)
+    af.set_soundpack("high_contrast")
+    hc_tones = SOUNDPACKS["high_contrast"]["tones"]["click_left"]
+    assert hc_tones[0][0] >= 1500, f"Frequenza high_contrast troppo bassa: {hc_tones[0][0]} Hz"
+    print("Soundpack 'High Contrast' (Frequenza Penetrante >= 1500 Hz): 100% Conforme")
+
+    # Mute (Silenzioso totale)
+    af.set_soundpack("mute")
+    assert len(SOUNDPACKS["mute"]["tones"]) == 0
+    af.play("click_left")
+    assert af._queue.empty(), "In modalità mute non devono essere accodati toni"
+    print("Soundpack 'Mute' (Silenzioso Totale): Coda vuota verificata")
+
+    af.stop()
+    print(">>> TEST 24 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -937,8 +1014,10 @@ if __name__ == "__main__":
     test_clinical_phrasebook_manager()
     test_camera_worker_hot_swap()
     test_clinical_session_logger_and_report_generation()
+    test_fitts_evaluator_iso_9241_9()
+    test_clinical_soundpacks_engine()
     print("\n========================================================")
-    print("TUTTI I 22 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 24 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

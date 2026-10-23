@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (22 su 22 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (24 su 24 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy & Zero-Heap (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback resiliente su Windows Media Foundation (MSMF) con test di pre-flight sul primo frame;
@@ -35,7 +35,9 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
 
 3. **DSP One-Euro Isotropo 2D & Deadzone Continua (core/dsp_filter.py):**
    - **Isotropia Euclidea Rigorosa 2D:** velocità istantanea scalare condivisa $v_{2D} = \sqrt{\dot{x}^2 + \dot{y}^2}$, garantendo 0.000000 px di asimmetria sulle diagonali a 45°;
-   - **Contrazione Prossimale (Soft-Thresholding):** zona morta continua con 89.3% di abbattimento del tremore patologico a 5.0 Hz e 0.00 px di oscillazione a riposo.
+   - **Contrazione Prossimale (Soft-Thresholding):** zona morta continua con 89.3% di abbattimento del tremore patologico a 5.0 Hz e 0.00 px di oscillazione a riposo;
+   - **Caching Analitico di $\alpha_d$ & Reset Atomico:** derivata campionata con memorizzazione costante $O(1)$ ed eliminazione di ricalcoli trigonometrici ridondanti;
+   - **Calibrazione Spettrale Clinica (core/profile_manager.py):** cutoff calibrato a 0.85 Hz per Parkinson (abbattimento > 93% nella banda 4-6 Hz) e 0.95 Hz per Distonia/Spasmi.
 
 4. **Iniezione Sub-Pixel Win32 a 16-bit (core/virtual_input.py):**
    - API nativa ctypes `SendInput` a 64-bit con struttura `INPUT` pre-allocata staticamente (zero allocazioni heap per frame, 3.5 µs di latenza);
@@ -101,9 +103,9 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
     - Assorbimento dinamico del drift posturale lento (*Slow Baseline Drift Absorption*);
     - Notifica ergonomica contestuale nel banner di sicurezza per suggerire ricentratura comoda F12 o pausa di riposo.
 
-14. **Feedback Uditivo Multi-Sensoriale Asincrono (core/audio_feedback.py):**
+14. **Feedback Uditivo Multi-Sensoriale Asincrono & Soundpack Clinici (core/audio_feedback.py):**
     - Coda audio asincrona a latenza zero (< 0.02 ms) su thread Win32 dedicato privo di jitter per il loop a 60 FPS;
-    - Toni differenziati a livello frequenziale per confermare acusticamente ogni evento (Clic SX brillante 1200 Hz, Clic DX 1800 Hz, doppio impulso, toni drag & drop e pausa/ripresa).
+    - 5 Profili sonori clinici differenziati per patologia e sensibilità sensoriale (*Standard Bilanciato*, *Morbido/Grave per Iperacusia*, *Alto Contrasto per Ambienti Rumorosi*, *Subtle Discreto*, *Silenzioso/Muto*).
 
 15. **Funzione di Trasferimento Balistica Non-Lineare (core/ballistics.py):**
     - Curva di Fitts fisiologica monotona con esponente $\gamma = 1.25$;
@@ -157,6 +159,16 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (2
     - Metriche riabilitative CAA (Comunicazione Aumentativa Alternativa): conteggio tocchi effettivi, completamenti predittivi, caratteri risparmiati e Keystroke Savings Rate (KSR %);
     - Generazione automatica di relazioni cliniche formattate per logopedisti e cartelle sanitarie (`reports/clinical_session_*.md` e JSON) a fine sessione.
 
+25. **Valutatore Scientifico Legge di Fitts & Throughput ISO 9241-9 (core/fitts_evaluator.py & gui/control_panel.py):**
+    - Standard ergonomico internazionale ISO 9241-9 integrato direttamente nella Sandbox a bersagli;
+    - Calcolo rigoroso dell'Indice di Difficoltà ($ID = \log_2(D / W + 1.0)$ in bit) e del Throughput motorio ($TP = ID / MT$ in bit/s);
+    - Feedback istantaneo a schermo su Movement Time (MT) e capacità di canale informativo del paziente ad ogni bersaglio completato.
+
+26. **Motore Soundpack Clinici Differenziati (core/audio_feedback.py & gui/control_panel.py):**
+    - 5 profili acustici clinici calibrati: *Standard (Bilanciato)*, *Morbido / Grave (Bassa frequenza $\le 600$ Hz per iperacusia/autismo)*, *Alto Contrasto (Frequenza penetrante $\ge 1500$ Hz per ambienti rumorosi)*, *Subtle / Discreto (Minimale 15 ms)* e *Silenzioso (Muto)*;
+    - Selettore a tendina nel pannello di controllo ("🎤 Audio & Gesti") con salvataggio persistente nel profilo;
+    - Coda asincrona thread-safe non-bloccante a zero jitter per il tracking loop a 60 FPS.
+
 ---
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
@@ -173,7 +185,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 22 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 24 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 
@@ -219,12 +231,12 @@ Quando sei a casa davanti alla postazione reale con il paziente:
 Quando ti sposti sul computer di casa o apri la nuova sessione, puoi dire all'AI:
 *"Procediamo con le prossime migliorie pianificate per SteadyMotion AI"* oppure scegliere direttamente uno di questi argomenti del framework di audit cinico:
 
-1. **Topic 3: DSP One-Euro & Fisica della Traiettoria (`core/dsp_filter.py`)**
-   - Calibrazione dinamica del cutoff $f_c$ sulle frequenze del tremore patologico (Parkinson 4-6 Hz vs Tremore Essenziale 6-10 Hz);
-   - Profiling del soft-thresholding per eliminare ogni sensazione di resistenza o ritardo nell'inversione improvvisa di traiettoria.
+1. **Topic 4: Iniezione Sub-Pixel Win32 a 16-bit (`core/virtual_input.py`)**
+   - Audit approfondito su coordinate sub-pixel normalizzate (0-65535) su configurazioni multi-monitor miste (4K primario + 1080p secondario con DPI asimmetrico 150% vs 100%);
+   - Verifica di assenza di blocchi e coerenza temporale su chiamate ad alta frequenza.
 
-2. **Topic 4: Profiling & Accelerazione DirectML / ONNX Runtime vs MediaPipe CPU**
-   - Valutazione su GPU integrate budget (Intel Iris Xe, AMD Radeon Vega / 680M) per verificare se l'inferenza TFLite GPU Delegate / DirectML riduce ulteriormente la latenza sotto i 10 ms su macchine commerciali economiche.
+2. **Topic 5: Dwell Clicker & Leaky Bucket Gravity Well (`core/dwell_clicker.py`)**
+   - Verifica dell'ancoraggio HUD alle coordinate target e differenziazione decadimento tra tremore fisiologico e spasmo estensorio brusco.
 
 3. **Collaudo dal Vivo con Webcam Reale & Postazione Clinica**
    - Test sul campo con paziente/volontario seguendo gli 8 punti della procedura di collaudo (F12, ROM 5 punti, Dwell, AAC e Co-Pilot).
@@ -232,7 +244,7 @@ Quando ti sposti sul computer di casa o apri la nuova sessione, puoi dire all'AI
 ---
 
 ### 💬 COMANDI RAPIDI DA DARE ALL'AI AL RIENTRO:
-- *"Procediamo con il Topic 3: DSP One-Euro & Fisica della Traiettoria in dsp_filter.py"*
+- *"Procediamo con il Topic 4: Iniezione Sub-Pixel Win32 in virtual_input.py"*
 - *"Ho collegato la webcam reale a casa: ecco i risultati della diagnostica hardware..."*
 - *"Eseguiamo il collaudo dal vivo con il paziente"*
 ```
