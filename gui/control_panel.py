@@ -84,6 +84,7 @@ class ControlPanel:
         on_open_diagnostics: Optional[Callable[[], None]] = None,
         on_open_palette: Optional[Callable[[], None]] = None,
         on_switch_camera: Optional[Callable[[int], bool]] = None,
+        clinical_logger: Optional[Any] = None,
     ):
         self.root = root
         self.on_param_change = on_param_change
@@ -97,6 +98,7 @@ class ControlPanel:
         self.on_open_diagnostics = on_open_diagnostics
         self.on_open_palette = on_open_palette
         self.on_switch_camera = on_switch_camera
+        self.clinical_logger = clinical_logger
 
         self.profile_manager = ProfileManager()
 
@@ -487,6 +489,11 @@ class ControlPanel:
                 text=f"🎉 ISO 9241-9 Throughput: {summary['mean_throughput_bps']} bit/s (MT: {summary['mean_movement_time_sec']}s)",
                 text_color="#38bdf8",
             )
+            if self.clinical_logger is not None:
+                try:
+                    self.clinical_logger.record_fitts_assessment(summary)
+                except Exception:
+                    pass
 
     # ---------------- TAB 2: PUNTAMENTO & FILTRI ----------------
     def _build_tab_controls(self):

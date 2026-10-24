@@ -9,6 +9,7 @@ Verifica:
 6. Triple Buffering circolare e sincronizzazione hardware Event-Driven in CameraWorker.
 """
 
+import json
 import math
 import os
 import sys
@@ -1608,6 +1609,88 @@ def test_acoustic_trigger_noise_immunity_and_pop_detection():
     print(">>> TEST 34 SUPERATO! <<<")
 
 
+def test_fitts_assessment_integration_in_clinical_session():
+    print("\n--- TEST 35: Integrazione Valutazione ISO 9241-9 & Throughput nel Clinical Session Logger ---")
+    import shutil
+    test_dir = "reports_test_tmp_fitts"
+    if os.path.exists(test_dir):
+        shutil.rmtree(test_dir)
+
+    logger = ClinicalSessionLogger(reports_dir=test_dir)
+    assert logger.fitts_assessments == [], "La lista fitts_assessments deve iniziare vuota"
+
+    summary_empty = logger.get_session_summary()
+    assert summary_empty["fitts_assessment"] is None, "fitts_assessment deve essere None se non ci sono valutazioni"
+
+    # 1. Simula una valutazione con FittsEvaluator ISO 9241-9
+    fe = FittsEvaluator()
+    fe.start_trial(start_x=200.0, start_y=200.0, now=0.0)
+    # Target 1: D=300px, W=60px, MT=0.75s
+    fe.record_hit(target_id=0, target_x=500.0, target_y=200.0, target_width=60.0, now=0.75, is_hit=True, hit_x=502.0, hit_y=201.0)
+    # Target 2: D=400px, W=60px, MT=0.90s
+    fe.record_hit(target_id=1, target_x=500.0, target_y=600.0, target_width=60.0, now=1.65, is_hit=True, hit_x=499.0, hit_y=598.0)
+    # Target 3: D=350px, W=60px, MT=0.80s
+    fe.record_hit(target_id=2, target_x=150.0, target_y=600.0, target_width=60.0, now=2.45, is_hit=True, hit_x=151.0, hit_y=600.0)
+
+    fitts_summary = fe.get_summary()
+    assert fitts_summary["hits"] == 3
+    assert fitts_summary["mean_throughput_bps"] > 0.0
+    assert fitts_summary["effective_throughput_tpe"] > 0.0
+
+    # 2. Registra la valutazione nel clinical session logger
+    logger.record_fitts_assessment(fitts_summary)
+    assert len(logger.fitts_assessments) == 1
+
+    summary_populated = logger.get_session_summary()
+    fa = summary_populated["fitts_assessment"]
+    assert fa is not None, "fitts_assessment non deve essere None dopo la registrazione"
+    assert fa["assessments_count"] == 1
+    assert fa["latest"]["mean_throughput_bps"] == fitts_summary["mean_throughput_bps"]
+    assert fa["latest"]["effective_throughput_tpe"] == fitts_summary["effective_throughput_tpe"]
+    assert fa["best_throughput_bps"] == fitts_summary["mean_throughput_bps"]
+    assert fa["mean_overall_throughput_bps"] == fitts_summary["mean_throughput_bps"]
+
+    # 3. Verifica generazione report Markdown clinico con tabella ISO 9241-9
+    md = logger.generate_markdown_report(patient_id="Paziente-ISO-Fitts", notes="Valutazione ergonomica del controllo motorio.")
+    assert "### 4. 📐 Valutazione Ergonomica Standardizzata ISO 9241-9 (Legge di Fitts)" in md
+    assert "Throughput Nominale (TP)" in md
+    assert "Throughput Effettivo (TPe)" in md
+    assert f"{fitts_summary['mean_throughput_bps']} bit/s" in md
+    assert f"{fitts_summary['effective_throughput_tpe']} bit/s" in md
+    assert "Paziente-ISO-Fitts" in md
+
+    # 4. Verifica salvataggio e conformita serializzazione JSON e Markdown su disco
+    md_path, json_path = logger.save_report(patient_id="Paziente-ISO-Fitts")
+    assert os.path.exists(md_path), f"File report markdown non creato: {md_path}"
+    assert os.path.exists(json_path), f"File report JSON non creato: {json_path}"
+
+    with open(json_path, "r", encoding="utf-8") as jf:
+        loaded_json = json.load(jf)
+    assert "fitts_assessment" in loaded_json
+    assert loaded_json["fitts_assessment"]["latest"]["mean_throughput_bps"] == fitts_summary["mean_throughput_bps"]
+
+    with open(md_path, "r", encoding="utf-8") as mf:
+        loaded_md = mf.read()
+    assert "### 4. 📐 Valutazione Ergonomica Standardizzata ISO 9241-9 (Legge di Fitts)" in loaded_md
+
+    # 5. Verifica telemetria CAA da tastiera assistiva
+    logger.record_typing(5)
+    assert logger.keyboard_raw_keystrokes == 5
+    logger.record_prediction_used("BISOGNO", prefix_len=2)
+    # len("BISOGNO") + 1 = 8. prefix_len = 2. saved = 8 - 2 - 1 = 5
+    assert logger.keyboard_words_predicted == 1
+    assert logger.keyboard_chars_saved == 5
+    # total needed = 5 + 5 = 10. ksr = 5/10 * 100 = 50.0%
+    assert abs(logger.get_ksr() - 50.0) < 1e-4
+
+    # Pulizia cartella temporanea
+    shutil.rmtree(test_dir)
+    print(f"ISO 9241-9 Throughput Integrato: TP={fitts_summary['mean_throughput_bps']} bit/s | TPe={fitts_summary['effective_throughput_tpe']} bit/s")
+    print(f"Telemetria CAA Sincronizzata: Chars={logger.keyboard_raw_keystrokes} | Chars Saved={logger.keyboard_chars_saved} | KSR={logger.get_ksr():.1f}%")
+    print("Serializzazione Relazione Clinica Markdown & JSON: 100% Bit-Exact")
+    print(">>> TEST 35 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1643,8 +1726,9 @@ if __name__ == "__main__":
     test_aac_abbreviation_expansion_and_keystroke_amplification()
     test_iso_9241_9_multi_directional_circle_and_effective_throughput()
     test_acoustic_trigger_noise_immunity_and_pop_detection()
+    test_fitts_assessment_integration_in_clinical_session()
     print("\n========================================================")
-    print("TUTTI I 34 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 35 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

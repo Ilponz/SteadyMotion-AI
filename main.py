@@ -166,6 +166,7 @@ class SteadyMotionApp:
             on_open_diagnostics=self.open_diagnostic_window,
             on_open_palette=self.open_action_palette,
             on_switch_camera=self.switch_camera_source,
+            clinical_logger=self.clinical_logger,
         )
         self.panel.demo_mode.set(self.is_demo)
         self._action_palette = None
@@ -291,6 +292,7 @@ class SteadyMotionApp:
             parent=self.root,
             virtual_input_controller=self.mouse,
             on_close_callback=lambda: setattr(self, "_floating_kbd", None),
+            clinical_logger=self.clinical_logger,
         )
 
     def open_diagnostic_window(self):

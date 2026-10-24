@@ -28,10 +28,12 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         parent: tk.Tk,
         virtual_input_controller: Optional[Any] = None,
         on_close_callback: Optional[Callable[[], None]] = None,
+        clinical_logger: Optional[Any] = None,
     ):
         super().__init__(parent)
         self.virtual_input = virtual_input_controller
         self.on_close_callback = on_close_callback
+        self.clinical_logger = clinical_logger
 
         self.title("Tastiera Assistiva Flottante — SteadyMotion AI")
         self.geometry("820x430+150+480")
@@ -371,6 +373,13 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             except Exception:
                 pass
 
+        # 3. Registrazione per telemetria clinica CAA
+        if self.clinical_logger is not None:
+            try:
+                self.clinical_logger.record_typing(1)
+            except Exception:
+                pass
+
     def _handle_backspace(self):
         cur = self.typed_text.get()
         if cur:
@@ -405,6 +414,12 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         self.word_predictor.learn_word(phrase)
         # Verbalizza subito con sintesi vocale
         self._speak_phrase(phrase)
+        # Registrazione per telemetria clinica CAA (frase predefinita)
+        if self.clinical_logger is not None:
+            try:
+                self.clinical_logger.record_prediction_used(phrase, prefix_len=0)
+            except Exception:
+                pass
 
     def _extract_current_prefix_and_previous(self) -> Tuple[str, Optional[str]]:
         """Estrae l'ultimo token non completato e la parola precedente completata."""
@@ -495,6 +510,13 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         if prev_word:
             self.word_predictor.learn_bigram(prev_word, suggestion)
         self.word_predictor.learn_word(suggestion)
+
+        # Registrazione per telemetria clinica CAA
+        if self.clinical_logger is not None:
+            try:
+                self.clinical_logger.record_prediction_used(suggestion, prefix_len=len(prefix))
+            except Exception:
+                pass
 
         # Cursore grafico alla fine del display
         try:

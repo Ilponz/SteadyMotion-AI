@@ -21,7 +21,7 @@ import json
 import os
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class ClinicalSessionLogger:
@@ -57,6 +57,9 @@ class ClinicalSessionLogger:
         # Metriche Ergonomia
         self.head_drop_alerts: int = 0
         self.lateral_tilt_alerts: int = 0
+
+        # Valutazioni Standardizzate ISO 9241-9 (Legge di Fitts & Throughput)
+        self.fitts_assessments: List[Dict[str, Any]] = []
 
     def set_tracking_state(self, is_active: bool, now: Optional[float] = None):
         """Aggiorna lo stato di tracciamento attivo vs standby accumulando i tempi trascorsi."""
@@ -129,6 +132,14 @@ class ClinicalSessionLogger:
         elif "Tilt" in reason or "Inclinazione" in reason:
             self.lateral_tilt_alerts += 1
 
+    def record_fitts_assessment(self, fitts_summary: Dict[str, Any]):
+        """
+        Registra una valutazione standardizzata ISO 9241-9 / Legge di Fitts.
+        Include throughput (bit/s), MT (s), errore % ed efficacia (TPe).
+        """
+        if isinstance(fitts_summary, dict) and fitts_summary:
+            self.fitts_assessments.append(dict(fitts_summary))
+
     def get_ksr(self) -> float:
         """
         Calcola il Keystroke Savings Rate (KSR %):
@@ -189,6 +200,13 @@ class ClinicalSessionLogger:
                 "lateral_tilt_alerts": self.lateral_tilt_alerts,
                 "total_posture_warnings": self.head_drop_alerts + self.lateral_tilt_alerts,
             },
+            "fitts_assessment": {
+                "assessments_count": len(self.fitts_assessments),
+                "latest": self.fitts_assessments[-1] if self.fitts_assessments else None,
+                "best_throughput_bps": round(max([a.get("mean_throughput_bps", 0.0) for a in self.fitts_assessments]), 2) if self.fitts_assessments else 0.0,
+                "best_effective_throughput_tpe": round(max([a.get("effective_throughput_tpe", 0.0) for a in self.fitts_assessments]), 2) if self.fitts_assessments else 0.0,
+                "mean_overall_throughput_bps": round(sum([a.get("mean_throughput_bps", 0.0) for a in self.fitts_assessments]) / len(self.fitts_assessments), 2) if self.fitts_assessments else 0.0,
+            } if self.fitts_assessments else None,
         }
 
     def generate_markdown_report(self, patient_id: str = "Paziente-Anonimo", notes: str = "") -> str:
@@ -197,6 +215,27 @@ class ClinicalSessionLogger:
         m = s["motor_metrics"]
         a = s["aac_metrics"]
         e = s["ergonomic_metrics"]
+        f_data = s.get("fitts_assessment")
+
+        fitts_section = ""
+        if f_data and f_data.get("latest"):
+            f = f_data["latest"]
+            fitts_section = f"""
+---
+
+### 4. 📐 Valutazione Ergonomica Standardizzata ISO 9241-9 (Legge di Fitts)
+| Parametro Standardizzato ISO 9241-9 | Valore Rilevato | Valutazione / Riferimento Clinico |
+| :--- | :--- | :--- |
+| **Throughput Nominale (TP)** | **{f.get('mean_throughput_bps', 0.0)} bit/s** | Capacità del canale informativo motorio |
+| **Throughput Effettivo (TPe)** | **{f.get('effective_throughput_tpe', 0.0)} bit/s** | Corretto con dispersione spaziale (We = 4.133 · σ) |
+| **Tempo Medio di Movimento (MT)** | {f.get('mean_movement_time_sec', 0.0)} s | Latenza motoria tra bersagli |
+| **Ampiezza Bersaglio Effettiva (We)** | {f.get('effective_target_width_we', 0.0)} px | Precisione spaziale (target 4% error rate) |
+| **Indice di Difficoltà Nominale (ID)** | {f.get('mean_index_of_difficulty', 0.0)} bit | Difficoltà del compito visuo-motorio |
+| **Indice di Difficoltà Effettivo (IDe)** | {f.get('effective_index_of_difficulty_ide', 0.0)} bit | Difficoltà effettiva percepita dal paziente |
+| **Tasso di Errore** | {f.get('error_rate_pct', 0.0)}% | Clic fuori bersaglio o interruzioni da spasmo |
+| **Dispersione Endpoint (σ)** | {f.get('endpoint_dispersion_sigma_px', 0.0)} px | Deviazione standard dei punti di arresto |
+| **Conformità Normativa** | {f.get('iso_conformance', 'ISO 9241-9 / ISO 9241-411')} | Standard internazionale non-keyboard input |
+"""
 
         md = f"""# 🏥 STEADYMOTION AI — RELAZIONE CLINICA DI SESSIONE
 
@@ -239,7 +278,7 @@ class ClinicalSessionLogger:
 | **Cadute Cefaliche (Head-Drop)** | {e['head_drop_alerts']} | Possibile cedimento estensori del collo |
 | **Inclinazioni Laterali Eccessive (Tilt > 12°)** | {e['lateral_tilt_alerts']} | Asimmetria posturale o scivolamento |
 | **Allarmi Ergonomici Totali** | **{e['total_posture_warnings']}** | Indice complessivo di affaticamento |
-
+{fitts_section}
 ---
 
 ### 📝 Note Cliniche & Osservazioni del Terapista:
