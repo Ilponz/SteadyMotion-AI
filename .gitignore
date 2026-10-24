@@ -33,6 +33,7 @@ ENV/
 scratch/
 extracted_docx_text.txt
 extracted_pptx_text.txt
+report_diagnostica_hardware.txt
 *.log
 
 # IDE files

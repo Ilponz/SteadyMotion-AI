@@ -28,7 +28,7 @@ def build():
     print("Avvio Compilazione Standalone SteadyMotion AI v3.0")
     print("==================================================")
 
-    datas_param = f"{MODEL_FILE};models"
+    datas_param = f"{os.path.join(BASE_DIR, 'models')};models"
 
     hidden_imports = [
         "--hidden-import", "mediapipe",
@@ -64,10 +64,11 @@ def build():
         dist_dir = os.path.join(BASE_DIR, "dist", "SteadyMotion-AI")
         exe_path = os.path.join(dist_dir, "SteadyMotion-AI.exe")
 
-        # Assicura copia ridondante di models/ anche nella root della cartella dist
+        # Assicura copia ridondante e sincronizzata di models/ anche nella root della cartella dist
         dist_models = os.path.join(dist_dir, "models")
-        if not os.path.exists(dist_models):
-            shutil.copytree(os.path.join(BASE_DIR, "models"), dist_models)
+        if os.path.exists(dist_models):
+            shutil.rmtree(dist_models)
+        shutil.copytree(os.path.join(BASE_DIR, "models"), dist_models)
 
         # Copia cartella config/ (profili clinici e prontuario frasi)
         dist_config = os.path.join(dist_dir, "config")
