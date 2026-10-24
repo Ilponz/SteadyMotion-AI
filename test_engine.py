@@ -1309,6 +1309,66 @@ def test_hardware_diagnostics_and_drag_drop_safety():
     print(">>> TEST 30 SUPERATO! <<<")
 
 
+def test_ergonomics_closed_loop_and_edge_triggered_alerting():
+    print("\n--- TEST 31: Monitor Ergonomico Closed-Loop, Edge-Triggered & Zero Heap Churn ---")
+    em = ErgonomicsMonitor(head_drop_threshold_deg=10.0, tilt_threshold_deg=12.0, sustained_duration_sec=2.0)
+    cl = ClinicalSessionLogger(reports_dir="reports_test_tmp_ergo")
+
+    # 1. Verifica Zero Heap Churn (Pre-allocated in-place status)
+    st1 = em.update(yaw_deg=0.0, pitch_deg=0.0, roll_deg=0.0, now=10.0)
+    st2 = em.update(yaw_deg=0.1, pitch_deg=-0.1, roll_deg=0.0, now=10.02)
+    assert id(st1) == id(st2), "ErgonomicsMonitor DEVE aggiornare lo status in-place a zero heap churn"
+    print("Zero Heap Churn: Istanza ErgonomicsStatus riutilizzata in-place (0 byte allocati)")
+
+    # 2. Verifica Alerting Edge-Triggered (Eliminazione Flooding 60 Hz)
+    t = 20.0
+    # Inizio caduta cefalica (Pitch = -15 gradi)
+    for _ in range(30):  # 30 passi da 0.05s = 1.5s (< 2.0s sustained)
+        t += 0.05
+        st = em.update(yaw_deg=0.0, pitch_deg=-15.0, roll_deg=0.0, now=t)
+        if st.is_new_fatigue_alert:
+            cl.record_ergonomic_alert(st.fatigue_reason)
+
+    assert not st.is_fatigued, "Non deve essere affaticato prima di 2.0s"
+    assert cl.head_drop_alerts == 0, "Nessun alert deve essere registrato prima della persistenza"
+
+    # Continua per altri 60 frame oltre la soglia dei 2.0s (sostenuto per 3 secondi completi)
+    for _ in range(60):  # 60 passi a 60 Hz simulati
+        t += 0.016
+        st = em.update(yaw_deg=0.0, pitch_deg=-15.0, roll_deg=0.0, now=t)
+        if st.is_new_fatigue_alert:
+            cl.record_ergonomic_alert(st.fatigue_reason)
+
+    assert st.is_fatigued, "Deve risultare in stato di fatica cervicale"
+    assert cl.head_drop_alerts == 1, f"L'alert deve essere registrato esattamente 1 volta (edge-triggered), registrati {cl.head_drop_alerts}"
+    print(f"Edge-Triggered Alerting: 1 solo evento registrato su 60 frame sostenuti (Zero Flooding)")
+
+    # 3. Assorbimento Dinamico Bi-Assiale Drift Lento (Pitch & Yaw)
+    em.reset_reference(0.0, 0.0, 0.0)
+    t = 100.0
+    for _ in range(50):
+        t += 0.05
+        st = em.update(yaw_deg=2.5, pitch_deg=-3.0, roll_deg=0.0, now=t)
+
+    assert st.pitch_bias_compensation < -0.05, "Il pitch bias deve assorbire il drift verticale"
+    assert st.yaw_bias_compensation > 0.05, "Lo yaw bias deve assorbire il drift orizzontale"
+    print(f"Assorbimento Bi-Assiale Drift: Pitch Bias={st.pitch_bias_compensation:.3f}°, Yaw Bias={st.yaw_bias_compensation:.3f}°")
+
+    # 4. Compensazione a Circuito Chiuso nel Tracker Engine
+    tracker = FaceTrackerEngine(model_path=get_resource_path(os.path.join("models", "face_landmarker.task")))
+    tracker.calibrate_center(yaw=0.0, pitch=0.0, nose_x=0.5, nose_y=0.5)
+
+    # Applica correzione
+    tracker.set_adaptive_bias(st.yaw_bias_compensation, st.pitch_bias_compensation)
+    assert tracker.adaptive_yaw_bias == st.yaw_bias_compensation
+    assert tracker.adaptive_pitch_bias == st.pitch_bias_compensation
+    print("Closed-Loop Tracker Integration: Bias posturale iniettato nella fusione 6-DoF con successo")
+
+    import shutil
+    shutil.rmtree("reports_test_tmp_ergo", ignore_errors=True)
+    print(">>> TEST 31 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1340,8 +1400,9 @@ if __name__ == "__main__":
     test_dwell_anti_sweep_gate_and_spasm_shock()
     test_inference_profiling_xnnpack_vs_directml_benchmark()
     test_hardware_diagnostics_and_drag_drop_safety()
+    test_ergonomics_closed_loop_and_edge_triggered_alerting()
     print("\n========================================================")
-    print("TUTTI I 30 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 31 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **30 su 30 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **31 su 31 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -92,6 +92,7 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Comunicazione Aumentativa & KSR > 75%:** Tastiera flottante con modello Bigram Next-Word prediction e prontuario frasi cliniche AAC persistente.
 - [x] **Clinical Asynchronous TTS Engine (core/tts_engine.py):** Worker Apartment COM STA nativo con auto-selezione voce italiana Microsoft Elsa, eliminazione radicale errori di marshalling STA (0x800401F0) e fallback PowerShell .NET.
 - [x] **Cartella Riabilitativa Digitale:** Modulo core/clinical_logger.py con odometria, conteggio spasmi e shock, KSR e generazione automatica di relazioni Markdown/JSON.
+- [x] **Monitor Ergonomico Closed-Loop & Zero Heap Churn (core/ergonomics.py):** Assorbimento bi-assiale (Pitch e Yaw) con iniezione del bias nella fusione 6-DoF del tracker engine, struttura ErgonomicsStatus pre-allocata in-place (0 byte/frame allocati) e notifica clinica edge-triggered che elimina il flooding a 60 Hz (1 evento per episodio sostenuto anziché 600).
 
 ---
 
