@@ -2,10 +2,11 @@
 Modulo di Monitoraggio Ergonomico & Affaticamento Muscolare Cervicale (Ergonomics Monitor).
 Progettato specificamente per pazienti con patologie neuro-muscolari (SLA, Parkinson, distonie):
 1. Rileva l'affaticamento posturale progressivo del collo (Head-Drop / abbassamento mento e Tilt laterale).
-2. Assorbimento Dinamico del Drift Posturale (Slow Baseline Bias Absorption):
-   adatta dolcemente la linea di zero ai lenti rilassamenti posturali (< 0.2 deg/s),
-   impedendo che il paziente debba forzare i muscoli estensori del collo per raggiungere lo schermo alto.
-3. Genera avvisi discreti di sovraccarico ergonomico per il caregiver o il paziente (suggerimento pausa o F12).
+2. Assorbimento Dinamico del Drift Posturale Bi-Assiale (Slow Baseline Bias Absorption):
+   adatta dolcemente la linea di zero ai lenti rilassamenti posturali sia in pitch che in yaw (< 1.5 deg/s),
+   impedendo che il paziente debba forzare i muscoli estensori del collo per raggiungere lo schermo alto o laterale.
+3. Notifiche Edge-Triggered & Zero Churn: genera alert clinici transizionali privi di duplicazioni a 60 Hz
+   e mantiene una struttura pre-allocata in memoria per azzerare il sovraccarico del Garbage Collector.
 """
 
 from dataclasses import dataclass
@@ -22,12 +23,14 @@ class ErgonomicsStatus:
     roll_drift_deg: float = 0.0
     yaw_drift_deg: float = 0.0
     should_suggest_recenter: bool = False
+    is_new_fatigue_alert: bool = False
     pitch_bias_compensation: float = 0.0
+    yaw_bias_compensation: float = 0.0
     session_duration_sec: float = 0.0
 
 
 class ErgonomicsMonitor:
-    """Monitor biometrico di postura ergonomica cervicale e affaticamento."""
+    """Monitor biometrico di postura ergonomica cervicale e affaticamento a zero allocazioni heap."""
 
     def __init__(
         self,
@@ -36,10 +39,10 @@ class ErgonomicsMonitor:
         sustained_duration_sec: float = 15.0,
         baseline_absorption_rate: float = 0.015,  # Tasso di compensazione drift posturale lento
     ):
-        self.head_drop_thresh = head_drop_threshold_deg
-        self.tilt_thresh = tilt_threshold_deg
-        self.sustained_dur = sustained_duration_sec
-        self.absorption_rate = baseline_absorption_rate
+        self.head_drop_thresh = float(head_drop_threshold_deg)
+        self.tilt_thresh = float(tilt_threshold_deg)
+        self.sustained_dur = float(sustained_duration_sec)
+        self.absorption_rate = float(baseline_absorption_rate)
 
         self.start_time: Optional[float] = None
         self.last_update_time: Optional[float] = None
@@ -51,18 +54,31 @@ class ErgonomicsMonitor:
 
         # Linea base adattiva a lungo termine (Moving Average lenta)
         self.adaptive_pitch_bias: float = 0.0
+        self.adaptive_yaw_bias: float = 0.0
+
+        # Tracciamento velocità angolare per discriminare movimenti volontari da drift lento
+        self._prev_pitch: Optional[float] = None
+        self._prev_yaw: Optional[float] = None
 
         # Timer di persistenza dell'anomalia posturale
         self.fatigue_start_time: Optional[float] = None
         self.last_recenter_prompt_time: float = 0.0
+        self._prev_is_fatigued: bool = False
+
+        # Struttura dati pre-allocata per Zero Heap Churn a 60 Hz
+        self._status = ErgonomicsStatus()
 
     def reset_reference(self, yaw: float = 0.0, pitch: float = 0.0, roll: float = 0.0):
         """Imposta la postura neutra di riferimento (chiamata contestualmente a F12)."""
-        self.ref_yaw = yaw
-        self.ref_pitch = pitch
-        self.ref_roll = roll
+        self.ref_yaw = float(yaw)
+        self.ref_pitch = float(pitch)
+        self.ref_roll = float(roll)
         self.adaptive_pitch_bias = 0.0
+        self.adaptive_yaw_bias = 0.0
+        self._prev_pitch = None
+        self._prev_yaw = None
         self.fatigue_start_time = None
+        self._prev_is_fatigued = False
 
     def update(
         self,
@@ -90,15 +106,22 @@ class ErgonomicsMonitor:
         d_pitch = pitch_deg - self.ref_pitch
         d_roll = roll_deg - self.ref_roll
 
-        # 1. Assorbimento dinamico del drift lento (Head-Droop rilassamento naturale)
+        # 1. Assorbimento dinamico del drift lento (Head-Drop / Rilassamento naturale)
         # Se la velocità di rotazione del capo è bassa (< 1.5 deg/s), assorbe dolcemente il bias
-        prev_p = self.prev_pitch if hasattr(self, "prev_pitch") and self.prev_pitch is not None else pitch_deg
-        head_vel = abs(pitch_deg - prev_p) / dt
-        self.prev_pitch = pitch_deg
+        prev_p = self._prev_pitch if self._prev_pitch is not None else pitch_deg
+        prev_y = self._prev_yaw if self._prev_yaw is not None else yaw_deg
+        head_pitch_vel = abs(pitch_deg - prev_p) / dt
+        head_yaw_vel = abs(yaw_deg - prev_y) / dt
+        self._prev_pitch = pitch_deg
+        self._prev_yaw = yaw_deg
 
-        if head_vel < 1.5:
-            alpha = min(0.2, self.absorption_rate * dt)
-            self.adaptive_pitch_bias += (d_pitch - self.adaptive_pitch_bias) * alpha
+        if head_pitch_vel < 1.5:
+            alpha_pitch = min(0.2, self.absorption_rate * dt)
+            self.adaptive_pitch_bias += (d_pitch - self.adaptive_pitch_bias) * alpha_pitch
+
+        if head_yaw_vel < 1.5:
+            alpha_yaw = min(0.2, self.absorption_rate * dt)
+            self.adaptive_yaw_bias += (d_yaw - self.adaptive_yaw_bias) * alpha_yaw
 
         # 2. Rilevamento della fatica cervicale persistente
         # d_pitch negativo = testa abbassata (mento verso il petto / Head-Drop)
@@ -129,13 +152,21 @@ class ErgonomicsMonitor:
         else:
             self.fatigue_start_time = None
 
-        return ErgonomicsStatus(
-            is_fatigued=is_fatigued,
-            fatigue_reason=reason,
-            pitch_drift_deg=d_pitch,
-            roll_drift_deg=d_roll,
-            yaw_drift_deg=d_yaw,
-            should_suggest_recenter=should_recenter,
-            pitch_bias_compensation=self.adaptive_pitch_bias,
-            session_duration_sec=session_dur,
-        )
+        # Rilevamento edge-triggered dell'alert (solo al fronte di salita o prompt periodico)
+        is_new_fatigue_alert = (is_fatigued and not self._prev_is_fatigued) or should_recenter
+        self._prev_is_fatigued = is_fatigued
+
+        # Aggiornamento in-place della struttura pre-allocata (Zero Heap Churn)
+        st = self._status
+        st.is_fatigued = is_fatigued
+        st.fatigue_reason = reason
+        st.pitch_drift_deg = d_pitch
+        st.roll_drift_deg = d_roll
+        st.yaw_drift_deg = d_yaw
+        st.should_suggest_recenter = should_recenter
+        st.is_new_fatigue_alert = is_new_fatigue_alert
+        st.pitch_bias_compensation = self.adaptive_pitch_bias
+        st.yaw_bias_compensation = self.adaptive_yaw_bias
+        st.session_duration_sec = session_dur
+
+        return st

@@ -8,11 +8,18 @@ echo.
 echo Avvio del controllo automatico sensori...
 echo.
 
-python diagnostica_hardware.py
+if exist "%~dp0SteadyMotion-AI.exe" (
+    cd /d "%~dp0"
+    "SteadyMotion-AI.exe" --diagnostics
+) else if exist "%~dp0dist\SteadyMotion-AI\SteadyMotion-AI.exe" (
+    cd /d "%~dp0dist\SteadyMotion-AI"
+    "SteadyMotion-AI.exe" --diagnostics
+) else (
+    python "%~dp0diagnostica_hardware.py"
+)
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo ATTENZIONE: Errore durante l'esecuzione della diagnostica Python.
-    echo Verificare che Python sia installato o eseguire da ambiente SteadyMotion.
+    echo ATTENZIONE: Errore durante l'esecuzione della diagnostica.
     pause
 )

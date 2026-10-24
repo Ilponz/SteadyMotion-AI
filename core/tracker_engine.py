@@ -83,6 +83,10 @@ class FaceTrackerEngine:
         self.fov_yaw: float = 18.0
         self.fov_pitch: float = 14.0
 
+        # Bias adattivo posturale a lungo termine (Closed-Loop Ergonomics)
+        self.adaptive_yaw_bias: float = 0.0
+        self.adaptive_pitch_bias: float = 0.0
+
         # Monotonic timestamp tracker
         self._last_timestamp_ms: int = -1
 
@@ -96,7 +100,14 @@ class FaceTrackerEngine:
         self.neutral_nose_x = nose_x
         self.neutral_nose_y = nose_y
         self.neutral_ipd = max(0.05, ipd)
+        self.adaptive_yaw_bias = 0.0
+        self.adaptive_pitch_bias = 0.0
         self.is_calibrated = True
+
+    def set_adaptive_bias(self, yaw_bias: float, pitch_bias: float):
+        """Imposta la correzione posturale lenta calcolata dal modulo ergonomico."""
+        self.adaptive_yaw_bias = float(yaw_bias)
+        self.adaptive_pitch_bias = float(pitch_bias)
 
     def _extract_euler_angles(self, matrix_4x4) -> Tuple[float, float, float]:
         """Decomposizione della matrice SO(3) nei tre angoli cardinali con protezione singolarità (Zero-Heap)."""
@@ -273,8 +284,8 @@ class FaceTrackerEngine:
                 iris_dy = 0.0
 
         # 5. FUSIONE IBRIDA 6-DoF Normalizzata (Rotazione Angolare Rigida + Traslazione Fine Invariante Z)
-        d_yaw = (yaw - self.neutral_yaw) / self.fov_yaw
-        d_pitch = (pitch - self.neutral_pitch) / self.fov_pitch
+        d_yaw = (yaw - self.neutral_yaw - self.adaptive_yaw_bias) / self.fov_yaw
+        d_pitch = (pitch - self.neutral_pitch - self.adaptive_pitch_bias) / self.fov_pitch
 
         d_trans_x = (nose_x - self.neutral_nose_x) * 3.5 * ipd_scale
         d_trans_y = (nose_y - self.neutral_nose_y) * 3.5 * ipd_scale

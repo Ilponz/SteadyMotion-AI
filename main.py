@@ -45,7 +45,7 @@ VK_F9 = 0x78
 
 
 class SteadyMotionApp:
-    def __init__(self):
+    def __init__(self, force_demo: bool = False):
         # Sblocco timer kernel Windows a 1.0 ms e DPI awareness v2
         enable_high_precision_timer()
 
@@ -144,9 +144,13 @@ class SteadyMotionApp:
             use_mjpg=True,
             mirror_image=True,
         )
-        self.camera_ready = self.camera.start()
-        # Fallback automatico su modalità Demo se non c'è webcam fisica collegata
-        self.is_demo = not self.camera_ready
+        if force_demo:
+            self.camera_ready = False
+            self.is_demo = True
+        else:
+            self.camera_ready = self.camera.start()
+            # Fallback automatico su modalità Demo se non c'è webcam fisica collegata
+            self.is_demo = not self.camera_ready
 
         # Pannello di Controllo GUI Moderno (CustomTkinter)
         self.panel = ControlPanel(
@@ -432,6 +436,7 @@ class SteadyMotionApp:
             self.dsp_filter.reset()
             self.magnetic_snapper.reset()
             self.dwell_clicker.cancel()
+            self.tracker.set_adaptive_bias(0.0, 0.0)
             self.ergonomics_monitor.reset_reference()
             return
 
@@ -446,6 +451,7 @@ class SteadyMotionApp:
                     res.cursor_raw_y,
                     self.tracker.neutral_ipd,
                 )
+                self.tracker.set_adaptive_bias(0.0, 0.0)
                 self.ergonomics_monitor.reset_reference(res.yaw, res.pitch, res.roll)
         self.dsp_filter.reset()
         self.magnetic_snapper.reset()
@@ -568,8 +574,10 @@ class SteadyMotionApp:
 
                 if face_detected:
                     ergo_st = self.ergonomics_monitor.update(yaw, pitch, roll, now=t_now)
-                    if ergo_st and ergo_st.is_fatigued:
-                        self.clinical_logger.record_ergonomic_alert(ergo_st.fatigue_reason)
+                    if ergo_st:
+                        self.tracker.set_adaptive_bias(ergo_st.yaw_bias_compensation, ergo_st.pitch_bias_compensation)
+                        if ergo_st.is_new_fatigue_alert:
+                            self.clinical_logger.record_ergonomic_alert(ergo_st.fatigue_reason)
                     if not self.is_paused:
                         self.gesture_trigger.process_blendshapes(
                             jaw_open_score=res.jaw_open_score,
@@ -708,5 +716,29 @@ class SteadyMotionApp:
 
 
 if __name__ == "__main__":
-    app = SteadyMotionApp()
+    if len(sys.argv) > 1 and any(arg in sys.argv for arg in ("--diagnostics", "--diag", "-d")):
+        from core.diagnostics import run_full_diagnostics, format_diagnostic_report_text
+        print("\n" + "=" * 60)
+        print("  Avvio Diagnostica Hardware SteadyMotion AI...")
+        print("  Scansione webcam USB, misura FPS reali e rumore audio in corso...")
+        print("=" * 60 + "\n")
+        diag = run_full_diagnostics()
+        report = format_diagnostic_report_text(diag)
+        print(report)
+        report_path = "report_diagnostica_hardware.txt"
+        try:
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(report)
+            print(f"\n[OK] Report salvato con successo in: {os.path.abspath(report_path)}")
+        except Exception as e:
+            print(f"\n[ATTENZIONE] Impossibile salvare il file di report: {e}")
+        print("\nPremere Invio per uscire...")
+        try:
+            input()
+        except Exception:
+            pass
+        sys.exit(0)
+
+    is_demo = "--demo" in sys.argv
+    app = SteadyMotionApp(force_demo=is_demo)
     app.start()
