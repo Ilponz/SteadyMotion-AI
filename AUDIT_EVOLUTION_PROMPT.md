@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **31 su 31 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **34 su 34 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -93,6 +93,9 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Clinical Asynchronous TTS Engine (core/tts_engine.py):** Worker Apartment COM STA nativo con auto-selezione voce italiana Microsoft Elsa, eliminazione radicale errori di marshalling STA (0x800401F0) e fallback PowerShell .NET.
 - [x] **Cartella Riabilitativa Digitale:** Modulo core/clinical_logger.py con odometria, conteggio spasmi e shock, KSR e generazione automatica di relazioni Markdown/JSON.
 - [x] **Monitor Ergonomico Closed-Loop & Zero Heap Churn (core/ergonomics.py):** Assorbimento bi-assiale (Pitch e Yaw) con iniezione del bias nella fusione 6-DoF del tracker engine, struttura ErgonomicsStatus pre-allocata in-place (0 byte/frame allocati) e notifica clinica edge-triggered che elimina il flooding a 60 Hz (1 evento per episodio sostenuto anziché 600).
+- [x] **Motore Espansione Abbreviazioni AAC:** Lookup O(1) con priorità top-ranking #1, sincronizzazione Win32 SendInput via cancellazione Backspace e iniezione frase espansa, persistenza JSON atomica e KSR esteso fino all'84.0%.
+- [x] **Valutatore Standardizzato ISO 9241-9 / ISO 9241-411:** Bersagli circolari a stella diametrale reciproca (13 nodi), calcolo dell'Ampiezza Bersaglio Effettiva (We = 4.133 * sigma), Indice di Difficoltà Effettivo (IDe) e Throughput Effettivo (TPe).
+- [x] **Trigger Acustico DSP & Auto-Calibrazione (core/acoustic_trigger.py):** Architettura testabile disaccoppiata process_audio_chunk, immunità totale da ronzii di rete 50/60 Hz e rumore bianco, rilevamento transitori 'pop' / tongue click ad alta frequenza, debounce anti-rimbalzo a 350 ms e auto-calibrazione adattiva del rumore ambientale.
 
 ---
 

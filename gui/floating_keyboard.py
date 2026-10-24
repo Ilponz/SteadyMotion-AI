@@ -460,22 +460,36 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         prefix, prev_word = self._extract_current_prefix_and_previous()
         cur = self.typed_text.get()
 
-        # Calcolo del frammento residuo da iniettare
-        if prefix and suggestion.upper().startswith(prefix.upper()):
-            remainder = suggestion[len(prefix):] + " "
-            new_text = cur[:-len(prefix)] + suggestion + " "
+        # Calcolo del testo sostituito e iniezione diretta sincronizzata
+        if prefix:
+            if suggestion.upper().startswith(prefix.upper()):
+                remainder = suggestion[len(prefix):] + " "
+                new_text = cur[:-len(prefix)] + suggestion + " "
+                if self.direct_injection.get() and self.virtual_input:
+                    try:
+                        self.virtual_input.send_unicode_char(remainder)
+                    except Exception:
+                        pass
+            else:
+                # Espansione di abbreviazione AAC (es. 'tvb' -> 'TI VOGLIO BENE')
+                new_text = cur[:-len(prefix)] + suggestion + " "
+                if self.direct_injection.get() and self.virtual_input:
+                    try:
+                        for _ in range(len(prefix)):
+                            self.virtual_input.send_key_event(0x08)  # VK_BACK
+                        self.virtual_input.send_unicode_char(suggestion + " ")
+                    except Exception:
+                        pass
         else:
             remainder = suggestion + " "
             new_text = cur + (" " if cur and not cur.endswith(" ") else "") + suggestion + " "
+            if self.direct_injection.get() and self.virtual_input:
+                try:
+                    self.virtual_input.send_unicode_char(remainder)
+                except Exception:
+                    pass
 
         self.typed_text.set(new_text)
-
-        # Iniezione diretta a Windows (Notepad, Word, Browser, Chat)
-        if self.direct_injection.get() and self.virtual_input:
-            try:
-                self.virtual_input.send_unicode_char(remainder)
-            except Exception:
-                pass
 
         # Apprendimento adattivo in RAM (sia vocabolo che bigramma contestuale)
         if prev_word:

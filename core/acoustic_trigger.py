@@ -85,29 +85,50 @@ class AcousticTrigger:
         self.is_enabled = enabled
         self.threshold = max(0.01, threshold)
 
-    def start_auto_calibration(self, duration: float = 2.0, on_complete: Optional[Callable[[float], None]] = None):
+    def start_auto_calibration(
+        self,
+        duration: float = 2.0,
+        on_complete: Optional[Callable[[float], None]] = None,
+        now: Optional[float] = None,
+    ):
         """Avvia il campionamento per determinare il rumore di fondo della stanza e la soglia ottima."""
-        if not self.is_running:
+        if not self.is_running and SOUNDDEVICE_AVAILABLE:
             self.start()
         self._calib_samples = []
-        self._calib_end_time = time.perf_counter() + duration
+        t_start = now if now is not None else time.perf_counter()
+        self._calib_end_time = t_start + duration
         self._calib_callback = on_complete
         self.is_calibrating = True
 
-    def _audio_callback(self, indata, frames, time_info, status):
-        if not self.is_running or not self.is_enabled or indata.shape[0] == 0:
-            return
+    def process_audio_chunk(self, indata: np.ndarray, now: Optional[float] = None) -> bool:
+        """
+        Elabora un chunk audio mono (es. 512 campioni a 16 kHz):
+        1. Pre-enfasi con filtro passa-alto differenziale per soppressione ronzii bassi (< 500 Hz).
+        2. Calcolo RMS e Zero-Crossing Rate (ZCR).
+        3. Valutazione soglia SNR e debounce temporale.
+        Restituisce True se ha innescato un trigger acustico valido.
+        """
+        if not self.is_enabled:
+            return False
 
-        signal = indata[:, 0]
-        # Pre-enfasi: filtro passa-alto differenziale per sopprimere ronzii e parlato ordinario
+        if indata is None:
+            return False
+
+        signal = indata[:, 0] if indata.ndim > 1 else indata
+        if signal.shape[0] == 0:
+            return False
+
+        # Pre-enfasi: filtro passa-alto differenziale per sopprimere ronzii di rete (50/60 Hz) e parlato ordinario
         hp_signal = np.diff(signal, prepend=signal[0])
         hp_rms = float(np.sqrt(np.mean(hp_signal**2)))
         self.current_volume = hp_rms
 
+        t_now = now if now is not None else time.perf_counter()
+
         # Auto-calibrazione in corso: accumulo campioni rumore ambiente
         if self.is_calibrating:
             self._calib_samples.append(hp_rms)
-            if time.perf_counter() >= self._calib_end_time:
+            if t_now >= self._calib_end_time:
                 self.is_calibrating = False
                 if self._calib_samples:
                     self.noise_floor = float(np.mean(self._calib_samples))
@@ -118,16 +139,24 @@ class AcousticTrigger:
                         cb = self._calib_callback
                         self._calib_callback = None
                         cb(self.threshold)
-            return
+            return False
 
         # Zero-Crossing Rate per discriminare transitori rapidi (soffio o schiocco 'pop')
         zcr = float(np.mean(np.abs(np.diff(np.sign(signal))))) / 2.0
 
-        now = time.perf_counter()
-        if hp_rms > self.threshold and zcr > 0.08 and (now - self.last_trigger_time > self.debounce_time):
-            self.last_trigger_time = now
+        triggered = False
+        if hp_rms > self.threshold and zcr > 0.08 and (t_now - self.last_trigger_time > self.debounce_time):
+            self.last_trigger_time = t_now
+            triggered = True
             if self.callback:
                 self.callback()
+
+        return triggered
+
+    def _audio_callback(self, indata, frames, time_info, status):
+        if not self.is_running or not self.is_enabled:
+            return
+        self.process_audio_chunk(indata)
 
     def stop(self):
         self.is_running = False

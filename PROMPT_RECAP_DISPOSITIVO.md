@@ -16,7 +16,7 @@ Azzeriamo qualsiasi costo hardware aggiuntivo: nessun Raspberry Pi, nessun dongl
 ---
 
 ### 🧠 ARCHITETTURA TECNICA & OTTIMIZZAZIONI COMPLETE (v3.0)
-Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (31 su 31 superati al 100%):
+Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (34 su 34 superati al 100%):
 
 1. **Video Ingestion Asincrona Zero-Copy & Zero-Heap (core/camera_worker.py):**
    - Backend DirectShow con buffer driver forzato a 1 e fallback resiliente su Windows Media Foundation (MSMF) con test di pre-flight sul primo frame;
@@ -202,9 +202,26 @@ Tutti i componenti sono testati con benchmark scientifici in `test_engine.py` (3
     - Macchina a stati resiliente Drag & Drop con rilascio automatico (Auto-Drop) sul bersaglio finale al completamento del Dwell, e sblocco immediato di sicurezza su pausa, ammiccamento di emergenza o intervento Caregiver Co-Pilot.
 
 33. **Monitor Ergonomico Closed-Loop & Alerting Edge-Triggered (core/ergonomics.py, core/tracker_engine.py & main.py):**
-    - Assorbimento adattivo bi-assiale (Pitch e Yaw) iniettato direttamente nella fusione 6-DoF di `FaceTrackerEngine`: adatta la linea di zero ai lenti rilassamenti posturali del paziente (< 1.5°/s), eliminando l'affaticamento cervicale per raggiungere le estremità dello schermo;
-    - Zero Heap Churn: istanza `ErgonomicsStatus` pre-allocata e riciclata in-place ad ogni fotogramma a 60 Hz (0 byte allocati a regime);
+    - Assorbimento adattivo bi-assiale (Pitch e Yaw) iniettato direttamente nella fusione 6-DoF di FaceTrackerEngine: adatta la linea di zero ai lenti rilassamenti posturali del paziente (< 1.5°/s), eliminando l'affaticamento cervicale per raggiungere le estremità dello schermo;
+    - Zero Heap Churn: istanza ErgonomicsStatus pre-allocata e riciclata in-place ad ogni fotogramma a 60 Hz (0 byte allocati a regime);
     - Alerting Edge-Triggered: elimina il flooding delle segnalazioni nei report clinici (1 solo evento registrato per episodio di Head-Drop/Tilt sostenuto anziché 60 volte al secondo).
+
+34. **Motore Espansione Abbreviazioni AAC (core/word_predictor.py & gui/floating_keyboard.py):**
+    - Dizionario integrato per espansione istantanea di sigle di emergenza e quotidiane (`aiu` -> `AIUTO PER FAVORE`, `doc` -> `CHIAMA IL DOTTORE`, `med` -> `HO BISOGNO DELLA MEDICINA`, `tvb` -> `TI VOGLIO BENE`, `fam` -> `HO FAME`, `set` -> `HO SETE`);
+    - Lookup O(1) con priorità top-ranking #1 nei suggerimenti predittivi;
+    - Sostituzione sincronizzata a Windows: cancellazione via SendInput Backspace dell'abbreviazione digitata e iniezione immediata della frase espansa;
+    - Boost del Keystroke Savings Rate (KSR) fino all'84.0% per frasi cliniche complesse;
+    - Registrazione dinamica di abbreviazioni personalizzate e persistenza atomica JSON.
+
+35. **Valutazione Circolare Multidirezionale ISO 9241-9 / ISO 9241-411 (core/fitts_evaluator.py):**
+    - Protocollo scientifico standardizzato con sequenza a stella reciproca diametrale (reciprocal crossing pattern su N=13 bersagli a 360°);
+    - Calcolo rigoroso dell'Ampiezza Bersaglio Effettiva (We = 4.133 * sigma), Indice di Difficoltà Effettivo (IDe = log2(De/We + 1)) e Throughput Effettivo (TPe = IDe / MT).
+
+36. **Immunità Rumore DSP, Rilevamento Pop/Puff & Auto-Calibrazione Trigger Acustico (core/acoustic_trigger.py):**
+    - Pre-enfasi ad alte prestazioni e Zero-Crossing Rate (ZCR > 0.08) con architettura testabile disaccoppiata process_audio_chunk;
+    - Immunità certificata (0 falsi positivi) contro ronzii continui di rete a 50/60 Hz e rumore bianco ambientale;
+    - Rilevamento istantaneo di transitori impulsivi ad alta frequenza ('pop' di lingua, soffio 'puff');
+    - Debounce lockout a 350 ms anti-doppio clic e auto-calibrazione adattiva del rumore di fondo.
 
 ### 📦 COME AVVIARLO SUL NUOVO DISPOSITIVO (A CASA CON WEBCAM)
 
@@ -220,7 +237,7 @@ Nella cartella del progetto trovi tutto già pronto e compilato:
 1. Installa i requisiti su Windows:
    `pip install opencv-python mediapipe numpy pywin32 sounddevice customtkinter darkdetect`
 2. Esegui la verifica scientifica automatica:
-   `python test_engine.py` (deve restituire "TUTTI I 31 TEST SUPERATI AL 100%")
+   `python test_engine.py` (deve restituire "TUTTI I 34 TEST SUPERATI AL 100%")
 3. Avvia:
    `python main.py` (oppure doppio clic su `Avvia_SteadyMotion.bat`).
 

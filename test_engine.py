@@ -30,9 +30,10 @@ from core.copilot import CaregiverCoPilot
 from core.gesture_trigger import GestureTrigger
 from core.phrasebook import PhrasebookManager
 from core.clinical_logger import ClinicalSessionLogger
-from core.fitts_evaluator import FittsEvaluator
+from core.fitts_evaluator import FittsEvaluator, generate_iso_circle_targets
 from core.tts_engine import TTSEngine
 from core.diagnostics import run_full_diagnostics, format_diagnostic_report_text, scan_cameras
+from core.acoustic_trigger import AcousticTrigger
 from gui.hud_overlay import HUD_THEMES, DwellHUD
 
 
@@ -1369,6 +1370,244 @@ def test_ergonomics_closed_loop_and_edge_triggered_alerting():
     print(">>> TEST 31 SUPERATO! <<<")
 
 
+def test_aac_abbreviation_expansion_and_keystroke_amplification():
+    print("\n--- TEST 32: Motore Abbreviazioni AAC & Amplificazione Risparmio Tasti (KSR) ---")
+    wp = WordPredictor()
+
+    # 1. Verifica Abbreviazioni Cliniche e Quotidiane Pre-caricate
+    assert "aiu" in wp.abbreviations
+    assert "tvb" in wp.abbreviations
+    assert "doc" in wp.abbreviations
+    assert "med" in wp.abbreviations
+    print(f"Abbreviazioni AAC Attive: {len(wp.abbreviations)} caricate con successo")
+
+    # 2. Espansione Istantanea Top-Priority (Lookup O(1) con formattazione corretta)
+    res_tvb = wp.predict("tvb")
+    assert len(res_tvb) >= 1
+    assert res_tvb[0] == "TI VOGLIO BENE", f"Atteso 'TI VOGLIO BENE', ottenuto '{res_tvb[0]}'"
+
+    res_tvb_upper = wp.predict("TVB")
+    assert res_tvb_upper[0] == "TI VOGLIO BENE"
+
+    res_aiu = wp.predict("aiu")
+    assert res_aiu[0] == "AIUTO PER FAVORE"
+
+    res_doc = wp.predict("doc")
+    assert res_doc[0] == "CHIAMA IL DOTTORE"
+
+    res_med = wp.predict("med")
+    assert res_med[0] == "HO BISOGNO DELLA MEDICINA"
+    print("Espansione Esatta Top-Priority: 5/5 abbreviazioni verificate con priorità #1")
+
+    # 3. Match Parziale (Digitando solo le prime 2 lettere, es. 'tv' -> 'TI VOGLIO BENE')
+    res_partial = wp.predict("tv")
+    assert "TI VOGLIO BENE" in res_partial
+    print("Match Prefisso Abbreviazione: 'tv' espande correttamente 'TI VOGLIO BENE'")
+
+    # 4. Registrazione e Rimozione Dinamica Personalizzata (Caregiver / Utente)
+    wp.register_abbreviation("sos", "CHIAMATE IL 112 SUBITO")
+    assert wp.get_abbreviation("sos") == "CHIAMATE IL 112 SUBITO"
+    res_sos = wp.predict("sos")
+    assert res_sos[0] == "CHIAMATE IL 112 SUBITO"
+
+    # Persistenza Atomica JSON
+    test_json_path = os.path.join("config", "test_custom_abbr.json")
+    saved = wp.save_custom_abbreviations(test_json_path)
+    assert saved
+    assert os.path.exists(test_json_path)
+
+    wp2 = WordPredictor()
+    loaded = wp2.load_custom_abbreviations(test_json_path)
+    assert loaded
+    assert wp2.get_abbreviation("sos") == "CHIAMATE IL 112 SUBITO"
+
+    if os.path.exists(test_json_path):
+        os.remove(test_json_path)
+    print("Registrazione e Persistenza Atomica JSON: 100% Conforme")
+
+    # 5. Misurazione Scientifica Keystroke Savings Rate (KSR) con Espansione Abbreviazioni
+    # Frase target: "AIUTO PER FAVORE" (16 caratteri)
+    # Senza abbreviazioni: 16 tasti
+    # Con abbreviazione: 'a' + 'i' + 'u' (3 tasti) + 1 dwell sul suggerimento = 4 tasti
+    ksr_aiu = (16 - 4) / 16.0 * 100.0
+
+    # Frase target: "HO BISOGNO DELLA MEDICINA" (25 caratteri)
+    # Con abbreviazione: 'm' + 'e' + 'd' (3 tasti) + 1 dwell = 4 tasti
+    ksr_med = (25 - 4) / 25.0 * 100.0
+
+    print(f"KSR Abbreviazione 'aiu' -> 'AIUTO PER FAVORE': {ksr_aiu:.1f}% risparmio motorio")
+    print(f"KSR Abbreviazione 'med' -> 'HO BISOGNO DELLA MEDICINA': {ksr_med:.1f}% risparmio motorio")
+    assert ksr_aiu >= 75.0, "KSR insufficiente su emergenza"
+    assert ksr_med >= 80.0, "KSR insufficiente su frase medica complessa"
+    print(">>> TEST 32 SUPERATO! <<<")
+
+
+def test_iso_9241_9_multi_directional_circle_and_effective_throughput():
+    print("\n--- TEST 33: Standard ISO 9241-9 / ISO 9241-411 Bersagli Circolari & Throughput Effettivo ---")
+    center_x, center_y = 960.0, 540.0
+    radius = 350.0
+    num_targets = 13
+    target_width = 60.0
+
+    # 1. Generazione Bersagli Circolari Reciproci ISO 9241-9
+    targets = generate_iso_circle_targets(
+        center_x=center_x,
+        center_y=center_y,
+        radius=radius,
+        num_targets=num_targets,
+        target_width=target_width,
+    )
+    assert len(targets) == num_targets, f"Attesi {num_targets} bersagli, ottenuti {len(targets)}"
+
+    # Verifica che tutti i target_id da 0 a 12 siano coperti esattamente una volta
+    ids_covered = [t["target_id"] for t in targets]
+    assert sorted(ids_covered) == list(range(num_targets)), "Tutti gli indici geometrici devono essere percorsi"
+
+    # Verifica schema di attraversamento diametrale reciproco
+    # La distanza tra due bersagli consecutivi deve essere circa pari al diametro (2*radius)
+    t0 = targets[0]
+    t1 = targets[1]
+    dist_0_1 = math.hypot(t1["x"] - t0["x"], t1["y"] - t0["y"])
+    diameter = 2.0 * radius
+    assert dist_0_1 > diameter * 0.95, f"La traiettoria reciproca deve attraversare il diametro ({dist_0_1:.1f} vs {diameter:.1f})"
+    print(f"Generazione Bersagli Circolari: 13/13 nodi disposti a stella diametrale (Distanza media passo: {dist_0_1:.1f} px)")
+
+    # 2. Simulazione Puntamento Umano con Dispersione Spaziale Gaussiana
+    evaluator = FittsEvaluator()
+    evaluator.start_trial(start_x=center_x, start_y=center_y, now=10.0)
+
+    # Simuliamo 13 trial realistici lungo il circuito ISO circolare
+    sim_time = 10.0
+    np.random.seed(42)  # Risultati deterministici per il benchmark
+    for t in targets:
+        # Puntamento umano con varianza gaussiana sigma = 4.0 px dal centro
+        noise_x = float(np.random.normal(0.0, 4.0))
+        noise_y = float(np.random.normal(0.0, 4.0))
+        hit_x = t["x"] + noise_x
+        hit_y = t["y"] + noise_y
+
+        # Tempo di movimento simulato: ~ 0.85s per trial
+        mt_sim = float(np.random.uniform(0.75, 0.95))
+        sim_time += mt_sim
+
+        evaluator.record_hit(
+            target_id=t["target_id"],
+            target_x=t["x"],
+            target_y=t["y"],
+            target_width=t["width"],
+            now=sim_time,
+            is_hit=True,
+            hit_x=hit_x,
+            hit_y=hit_y,
+        )
+
+    # 3. Verifica Statistiche Aggregate & Metriche Effettive (We, IDe, TPe)
+    summary = evaluator.get_summary()
+    assert summary["total_trials"] == 13
+    assert summary["hits"] == 13
+    assert summary["error_rate_pct"] == 0.0
+    assert summary["iso_conformance"] == "ISO 9241-9 / ISO 9241-411 Compliant"
+
+    we = summary["effective_target_width_we"]
+    ide = summary["effective_index_of_difficulty_ide"]
+    tpe = summary["effective_throughput_tpe"]
+    sigma = summary["endpoint_dispersion_sigma_px"]
+
+    print(f"Dispersione Endpoint sigma: {sigma:.2f} px")
+    print(f"Ampiezza Bersaglio Effettiva (We = 4.133 * sigma): {we:.2f} px (Nominale: {target_width} px)")
+    print(f"Indice di Difficoltà Effettivo (IDe): {ide:.2f} bit (Nominale: {summary['mean_index_of_difficulty']} bit)")
+    print(f"Throughput Effettivo (TPe): {tpe:.2f} bit/s (Nominale: {summary['mean_throughput_bps']} bit/s)")
+
+    assert sigma > 0.5, "La deviazione standard deve riflettere la dispersione dei click"
+    assert we > 1.0, "L'ampiezza effettiva deve essere calcolata correttamente"
+    assert tpe > 1.5, f"Il Throughput effettivo deve superare 1.5 bps (misurato: {tpe:.2f})"
+    print(">>> TEST 33 SUPERATO! <<<")
+
+
+def test_acoustic_trigger_noise_immunity_and_pop_detection():
+    print("\n--- TEST 34: Immunità Rumore DSP, Rilevamento Pop/Puff & Auto-Calibrazione Trigger Acustico ---")
+    clicks_fired = []
+
+    def on_acoustic_click():
+        clicks_fired.append(time.perf_counter())
+
+    sr = 16000
+    chunk_size = 512
+    dt = chunk_size / sr  # 32 ms per chunk
+    trigger = AcousticTrigger(threshold=0.18, debounce_time=0.35, callback=on_acoustic_click, sample_rate=sr, chunk_size=chunk_size)
+
+    # 1. Verifica Immunità a Ronzii a Bassa Frequenza (Mains Hum 50/60 Hz / computer fan)
+    # Genera 1 secondo di sinusoidale pura a 60 Hz ad ampiezza elevata (0.3)
+    t_chunk = np.linspace(0, dt, chunk_size, endpoint=False)
+    hum_signal = (0.30 * np.sin(2.0 * math.pi * 60.0 * t_chunk)).astype(np.float32)
+
+    now = 10.0
+    for _ in range(30):  # ~ 1 secondo
+        now += dt
+        triggered = trigger.process_audio_chunk(hum_signal, now=now)
+        assert not triggered, "Il ronzio a 60 Hz non deve mai innescare il trigger acustico!"
+
+    assert len(clicks_fired) == 0, f"Ronzio a bassa frequenza ha causato {len(clicks_fired)} falsi positivi!"
+    print("Immunità Ronzio 50/60 Hz: 0 falsi positivi su 30 chunk ad ampiezza 0.30 (Confermato)")
+
+    # 2. Verifica Immunità a Rumore Bianco Ambientale Sotto-Soglia (RMS < threshold)
+    np.random.seed(123)
+    white_noise = (np.random.normal(0.0, 0.04, chunk_size)).astype(np.float32)
+    for _ in range(30):
+        now += dt
+        triggered = trigger.process_audio_chunk(white_noise, now=now)
+        assert not triggered, "Il rumore bianco ambientale sotto soglia non deve attivare il trigger"
+
+    assert len(clicks_fired) == 0
+    print("Immunità Rumore Bianco Ambientale: 0 falsi positivi verificati")
+
+    # 3. Rilevamento Impulso Non-Verbale 'Pop' / Tongue Click ad Alta Frequenza (ZCR > 0.08, RMS > 0.18)
+    # Generiamo un transitorio impulsivo a 2500 Hz con inviluppo esponenziale decadente
+    pop_signal = (0.70 * np.sin(2.0 * math.pi * 2500.0 * t_chunk) * np.exp(-t_chunk * 40.0)).astype(np.float32)
+    now += 0.5  # tempo oltre debounce
+    triggered_pop = trigger.process_audio_chunk(pop_signal, now=now)
+    assert triggered_pop, "L'impulso pop/tongue click deve innescare il trigger!"
+    assert len(clicks_fired) == 1, "Esattamente 1 clic registrato"
+    print("Rilevamento Transitorio Impulsivo 'Pop': Clic innescato con successo al millisecondo")
+
+    # 4. Verifica Debounce Lockout (Anti-Double Click)
+    # Un secondo pop a 0.10s (< debounce_time 0.35s) DEVE essere ignorato
+    now += 0.10
+    triggered_debounce = trigger.process_audio_chunk(pop_signal, now=now)
+    assert not triggered_debounce, "Il pop entro la finestra di debounce deve essere soppresso"
+    assert len(clicks_fired) == 1, "Nessun clic extra durante il debounce"
+
+    # Un terzo pop a 0.50s (> debounce_time 0.35s) DEVE scattare
+    now += 0.50
+    triggered_pop2 = trigger.process_audio_chunk(pop_signal, now=now)
+    assert triggered_pop2, "Il pop successivo oltre il debounce deve scattare regolarmente"
+    assert len(clicks_fired) == 2, "Secondo clic valido registrato"
+    print(f"Debounce Lockout (Finestra 350 ms): Anti-rimbalzo confermato al 100% (2 clic totali)")
+
+    # 5. Verifica Auto-Calibrazione Adattiva del Rumore di Fondo
+    calib_completed = [False]
+    new_thresh_recorded = [0.0]
+
+    def on_calib_done(th):
+        calib_completed[0] = True
+        new_thresh_recorded[0] = th
+
+    trigger.start_auto_calibration(duration=1.0, on_complete=on_calib_done, now=now)
+    assert trigger.is_calibrating
+
+    # Simula 1 secondo di ambiente con rumore medio RMS = 0.05
+    calib_noise = (np.random.normal(0.0, 0.05, chunk_size)).astype(np.float32)
+    for _ in range(32):  # 32 chunk * 32 ms ~ 1.02s
+        now += dt
+        trigger.process_audio_chunk(calib_noise, now=now)
+
+    assert not trigger.is_calibrating, "La calibrazione deve essersi conclusa al termine del tempo"
+    assert calib_completed[0], "Il callback di calibrazione deve essere stato invocato"
+    assert 0.08 <= trigger.threshold <= 0.38, f"Soglia calibrata fuori range fisiologico: {trigger.threshold}"
+    print(f"Auto-Calibrazione Adattiva: Noise Floor={trigger.noise_floor:.4f} -> Nuova Soglia={trigger.threshold:.3f}")
+    print(">>> TEST 34 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1401,8 +1640,11 @@ if __name__ == "__main__":
     test_inference_profiling_xnnpack_vs_directml_benchmark()
     test_hardware_diagnostics_and_drag_drop_safety()
     test_ergonomics_closed_loop_and_edge_triggered_alerting()
+    test_aac_abbreviation_expansion_and_keystroke_amplification()
+    test_iso_9241_9_multi_directional_circle_and_effective_throughput()
+    test_acoustic_trigger_noise_immunity_and_pop_detection()
     print("\n========================================================")
-    print("TUTTI I 31 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 34 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

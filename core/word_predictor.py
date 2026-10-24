@@ -11,6 +11,8 @@ Progettato specificamente per pazienti con grave disabilità motoria (SLA, tetra
 5. Auto-apprendimento dinamico in RAM sia di vocaboli che di associazioni a due parole (bigrammi).
 """
 
+import json
+import os
 from typing import Dict, List, Optional, Tuple
 
 
@@ -32,11 +34,97 @@ class WordPredictor:
         "IO", "HO", "NON", "VORREI", "MI", "GRAZIE", "PER FAVORE", "AIUTO"
     ]
 
+    # Abbreviazioni cliniche e quotidiane per espansione immediata AAC (Abbreviation Expansion)
+    DEFAULT_ABBREVIATIONS: Dict[str, str] = {
+        # Emergenze & Bisogni Primari
+        "aiu": "AIUTO PER FAVORE",
+        "set": "HO SETE",
+        "fam": "HO FAME",
+        "cal": "HO CALDO",
+        "fre": "HO FREDDO",
+        "dol": "HO MOLTO DOLORE",
+        "med": "HO BISOGNO DELLA MEDICINA",
+        "doc": "CHIAMA IL DOTTORE",
+        "inf": "CHIAMA L'INFERMIERE",
+        "oss": "HO BISOGNO DI OSSIGENO",
+        "asp": "SERVE L'ASPIRATORE",
+        "bag": "DEVO ANDARE IN BAGNO",
+        "let": "VORREI ANDARE A LETTO",
+        "sed": "VORREI SPOSTARMI SULLA SEDIA",
+        "pos": "AIUTAMI A CAMBIARE POSIZIONE",
+        # Comunicazione & Sociale
+        "tvb": "TI VOGLIO BENE",
+        "gra": "GRAZIE MILLE",
+        "pf": "PER FAVORE",
+        "bg": "BUONGIORNO",
+        "bs": "BUONASERA",
+        "bn": "BUONANOTTE",
+        "cmq": "COMUNQUE",
+        "nn": "NON",
+        "pk": "PERCHÉ",
+        "dvd": "DAVVERO",
+        "ok": "VA BENE D'ACCORDO",
+        "no": "NO GRAZIE",
+        "si": "SÌ GRAZIE",
+    }
+
     def __init__(self):
         self.root = TrieNode()
         self.custom_words: Dict[str, int] = {}
         self.bigrams: Dict[str, Dict[str, int]] = {}
+        self.abbreviations: Dict[str, str] = dict(self.DEFAULT_ABBREVIATIONS)
         self._load_core_dictionary()
+
+    def register_abbreviation(self, abbr: str, expansion: str):
+        """Registra o aggiorna un'abbreviazione personalizzata per il paziente."""
+        a_clean = abbr.strip().lower()
+        e_clean = expansion.strip()
+        if a_clean and e_clean:
+            self.abbreviations[a_clean] = e_clean
+
+    def remove_abbreviation(self, abbr: str) -> bool:
+        """Rimuove un'abbreviazione registrata."""
+        a_clean = abbr.strip().lower()
+        if a_clean in self.abbreviations:
+            del self.abbreviations[a_clean]
+            return True
+        return False
+
+    def get_abbreviation(self, abbr: str) -> Optional[str]:
+        """Restituisce l'espansione di un'abbreviazione se presente."""
+        return self.abbreviations.get(abbr.strip().lower(), None)
+
+    def get_all_abbreviations(self) -> Dict[str, str]:
+        """Restituisce il dizionario completo delle abbreviazioni attive."""
+        return dict(self.abbreviations)
+
+    def save_custom_abbreviations(self, filepath: str) -> bool:
+        """Salva le abbreviazioni personalizzate in formato JSON atomico."""
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+            temp_path = filepath + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(self.abbreviations, f, ensure_ascii=False, indent=2)
+            os.replace(temp_path, filepath)
+            return True
+        except Exception:
+            return False
+
+    def load_custom_abbreviations(self, filepath: str) -> bool:
+        """Carica abbreviazioni personalizzate da file JSON."""
+        if not os.path.exists(filepath):
+            return False
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    if isinstance(k, str) and isinstance(v, str):
+                        self.register_abbreviation(k, v)
+                return True
+        except Exception:
+            pass
+        return False
 
     def insert(self, word: str, frequency: int = 1):
         """Inserisce una parola nel Trie con la relativa frequenza."""
@@ -122,43 +210,77 @@ class WordPredictor:
             # 1.2 Nessuna parola precedente o bigramma assente -> Starter standard
             return self.DEFAULT_STARTERS[:max_results]
 
-        # CASO 2: Prefisso presente (Ricerca Trie per completamento)
+        # CASO 2: Prefisso presente
         is_all_upper = p_clean.isupper()
         is_title = p_clean.istitle()
-
         p_lower = p_clean.lower()
+
+        # 2.1 Verifica Abbreviazioni AAC ad altissima priorità (Abbreviation Expansion)
+        abbr_candidates: List[str] = []
+        if p_lower in self.abbreviations:
+            exp = self.abbreviations[p_lower]
+            abbr_candidates.append(exp.upper() if is_all_upper else exp)
+        elif len(p_lower) >= 2:
+            for a_key, exp in self.abbreviations.items():
+                if a_key.startswith(p_lower):
+                    fmt_exp = exp.upper() if is_all_upper else exp
+                    if fmt_exp not in abbr_candidates:
+                        abbr_candidates.append(fmt_exp)
+                        if len(abbr_candidates) >= max_results:
+                            break
+
+        # 2.2 Ricerca Trie per autocompletamento lessicale
         node = self.root
+        trie_found = True
         for char in p_lower:
             if char not in node.children:
-                return []
+                trie_found = False
+                break
             node = node.children[char]
 
-        # Esplora sottoalbero per raccogliere candidati
-        candidates: List[Tuple[int, str]] = []
-        self._dfs_collect(node, candidates)
+        trie_results: List[str] = []
+        if trie_found:
+            # Esplora sottoalbero per raccogliere candidati
+            candidates: List[Tuple[int, str]] = []
+            self._dfs_collect(node, candidates)
 
-        # Se abbiamo una parola precedente, diamo un boost di frequenza se la parola è un bigramma valido
-        if previous_word:
-            prev_lower = previous_word.strip().lower()
-            if prev_lower in self.bigrams:
-                boosted = []
-                for freq, word in candidates:
-                    bonus = self.bigrams[prev_lower].get(word, 0) * 2
-                    boosted.append((freq + bonus, word))
-                candidates = boosted
+            # Se abbiamo una parola precedente, diamo un boost di frequenza se la parola è un bigramma valido
+            if previous_word:
+                prev_lower = previous_word.strip().lower()
+                if prev_lower in self.bigrams:
+                    boosted = []
+                    for freq, word in candidates:
+                        bonus = self.bigrams[prev_lower].get(word, 0) * 2
+                        boosted.append((freq + bonus, word))
+                    candidates = boosted
 
-        # Ordina per frequenza decrescente, poi lunghezza crescente
-        candidates.sort(key=lambda item: (-item[0], len(item[1])))
+            # Ordina per frequenza decrescente, poi lunghezza crescente
+            candidates.sort(key=lambda item: (-item[0], len(item[1])))
 
-        results = []
-        for _, word in candidates[:max_results]:
-            if is_all_upper:
-                formatted = word.upper()
-            elif is_title:
-                formatted = word.capitalize()
-            else:
-                formatted = word
-            results.append(formatted)
+            for _, word in candidates:
+                if is_all_upper:
+                    formatted = word.upper()
+                elif is_title:
+                    formatted = word.capitalize()
+                else:
+                    formatted = word
+                trie_results.append(formatted)
+                if len(trie_results) >= max_results:
+                    break
+
+        # 2.3 Fusione con priorità alle abbreviazioni espanse
+        results: List[str] = []
+        for exp in abbr_candidates:
+            if exp not in results:
+                results.append(exp)
+            if len(results) >= max_results:
+                return results
+
+        for tr in trie_results:
+            if tr not in results:
+                results.append(tr)
+            if len(results) >= max_results:
+                break
 
         return results
 
