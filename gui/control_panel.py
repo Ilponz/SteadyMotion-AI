@@ -437,6 +437,18 @@ class ControlPanel:
         sh_row.pack(fill="x", padx=8, pady=4)
 
         ctk.CTkLabel(sh_row, text="🎯 SANDBOX DI ADDESTRAMENTO BERSAGLI", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(side="left")
+        btn_reset_sb = ctk.CTkButton(
+            sh_row,
+            text="🔄 Ripeti",
+            width=65,
+            height=24,
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            fg_color="#334155",
+            hover_color="#475569",
+            command=self._reset_sandbox,
+        )
+        btn_reset_sb.pack(side="right", padx=(4, 0))
+
         self.lbl_score = ctk.CTkLabel(sh_row, text="Bersagli: 0/5", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color="#10b981")
         self.lbl_score.pack(side="right")
 
@@ -494,6 +506,47 @@ class ControlPanel:
                     self.clinical_logger.record_fitts_assessment(summary)
                 except Exception:
                     pass
+
+        # Scheda Aiuti, Scorciatoie e Risoluzione Problemi
+        card_shortcuts = ctk.CTkFrame(self.tab_tutorial, corner_radius=8)
+        card_shortcuts.pack(fill="x", padx=6, pady=4)
+
+        ctk.CTkLabel(
+            card_shortcuts,
+            text="⌨️ TASTI RAPIDI GLOBALI & AIUTI RISOLUZIONE",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color="#38bdf8",
+        ).pack(anchor="w", padx=8, pady=(6, 2))
+
+        shortcuts_text = (
+            "• F9: Avvia / Sospendi controllo mouse (Standby sicuro)
+"
+            "• F12: Centratura istantanea dello schermo sulla postura di riposo comoda
+"
+            "• Mouse USB Caregiver: Muovi il mouse fisico per pausa di 2s (Zero conflitti)
+"
+            "• Freno Oculare: Chiudi gli occhi per 1.5s per annullare qualsiasi clic in corso
+"
+            "• Cursore troppo veloce? -> Riduci il 'Guadagno Movimento Head' nella scheda Puntamento
+"
+            "• Tremore continuo? -> Aumenta la 'Deadzone' (3.5 px) o attiva il profilo Parkinson"
+        )
+        ctk.CTkLabel(
+            card_shortcuts,
+            text=shortcuts_text,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color=("#475569", "#cbd5e1"),
+            justify="left",
+        ).pack(anchor="w", padx=8, pady=(2, 6))
+
+    def _reset_sandbox(self):
+        """Reimposta la griglia dei bersagli per consentire un nuovo ciclo di allenamento."""
+        self.targets_hit_count = 0
+        self.lbl_score.configure(text="Bersagli: 0/5", text_color="#10b981")
+        names = ["Alto-Sinistra", "Alto-Destra", "CENTRO", "Basso-Sinistra", "Basso-Destra"]
+        for idx, btn in enumerate(self._target_buttons):
+            btn.configure(fg_color="#0284c7", text=f"🎯 {names[idx]}")
+        self.fitts_evaluator.reset()
 
     # ---------------- TAB 2: PUNTAMENTO & FILTRI ----------------
     def _build_tab_controls(self):
