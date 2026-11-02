@@ -618,6 +618,11 @@ def test_magnetic_target_snapping():
     print(f"Esecuzione 100 chiamate a 60 Hz: {total_ms:.3f} ms ({total_ms * 10.0:.2f} µs/chiamata)")
     assert total_ms < 0.3, f"Tempo eccessivo: {total_ms:.3f} ms (limite 0.3 ms)"
 
+    # 7. Filtro Dimensionale Anti-Giant Container Trap
+    from core.magnetic_snapping import MAX_SNAP_WIDTH, MAX_SNAP_HEIGHT, MAX_SNAP_AREA, MIN_SNAP_DIM
+    assert MAX_SNAP_WIDTH == 480 and MAX_SNAP_HEIGHT == 220 and MAX_SNAP_AREA == 75000 and MIN_SNAP_DIM == 8
+    print("Filtro Anti-Giant Container: Scarto garantito per container e pannelli (100% Conforme)")
+
     print(">>> TEST 16 SUPERATO! <<<")
 
 

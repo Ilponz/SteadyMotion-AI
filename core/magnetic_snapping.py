@@ -73,6 +73,14 @@ class MagneticTarget:
         return math.hypot(x - self.center_x, y - self.center_y)
 
 
+# Costanti per il filtraggio dimensionale dei bersagli Win32 (Anti-Giant Container Trap)
+# Prevengono l'attrazione spuria verso pannelli generici, canvas, finestre intere o WebViews.
+MAX_SNAP_WIDTH = 480
+MAX_SNAP_HEIGHT = 220
+MAX_SNAP_AREA = 75000
+MIN_SNAP_DIM = 8
+
+
 class MagneticSnapper:
     """
     Motore di attrazione magnetica gravitazionale deterministica con breakout ad alta velocità
@@ -212,17 +220,24 @@ class MagneticSnapper:
                 if user32.GetWindowRect(hwnd, self._rect_byref):
                     w = self._rect.right - self._rect.left
                     h = self._rect.bottom - self._rect.top
+                    area = w * h
                     # Filtra solo elementi di dimensioni tipiche di controlli GUI (pulsanti, input, icone)
-                    if 8 <= w <= 600 and 8 <= h <= 350:
-                        cx = (self._rect.left + self._rect.right) / 2.0
-                        cy = (self._rect.top + self._rect.bottom) / 2.0
-                        self._cached_hwnd = hwnd
-                        self._cached_rect = (self._rect.left, self._rect.top, self._rect.right, self._rect.bottom)
-                        self._cached_center = (cx, cy)
+                    # Scarta contenitori, pannelli e finestre ad alta area (Anti-Giant Container Trap)
+                    if (MIN_SNAP_DIM <= w <= MAX_SNAP_WIDTH and
+                            MIN_SNAP_DIM <= h <= MAX_SNAP_HEIGHT and
+                            area <= MAX_SNAP_AREA):
+                        # Assicura che il cursore sia vicino o dentro il rettangolo
+                        if (self._rect.left - self.snap_radius <= x <= self._rect.right + self.snap_radius and
+                                self._rect.top - self.snap_radius <= y <= self._rect.bottom + self.snap_radius):
+                            cx = (self._rect.left + self._rect.right) / 2.0
+                            cy = (self._rect.top + self._rect.bottom) / 2.0
+                            self._cached_hwnd = hwnd
+                            self._cached_rect = (self._rect.left, self._rect.top, self._rect.right, self._rect.bottom)
+                            self._cached_center = (cx, cy)
 
-                        dist = math.hypot(x - cx, y - cy)
-                        if dist <= self.snap_radius:
-                            return cx, cy, None
+                            dist = math.hypot(x - cx, y - cy)
+                            if dist <= self.snap_radius:
+                                return cx, cy, None
         except Exception:
             pass
 
