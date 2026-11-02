@@ -66,6 +66,11 @@ class ClinicalSessionLogger:
         # Valutazioni Standardizzate ISO 9241-9 (Legge di Fitts & Throughput)
         self.fitts_assessments: List[Dict[str, Any]] = []
 
+        # Metriche Stabilità Posturale BCEA (Bivariate Contour Ellipse Area)
+        self.last_bcea_68: Optional[float] = None
+        self.last_bcea_95: Optional[float] = None
+        self.last_stability_grade: str = "NON_VALUTATA" 
+
     def set_tracking_state(self, is_active: bool, now: Optional[float] = None):
         """Aggiorna lo stato di tracciamento attivo vs standby accumulando i tempi trascorsi."""
         t_now = now or time.time()
@@ -140,6 +145,12 @@ class ClinicalSessionLogger:
             self.head_drop_alerts += 1
         elif "Tilt" in reason or "Inclinazione" in reason:
             self.lateral_tilt_alerts += 1
+
+    def record_bcea_stability(self, bcea_68: float, bcea_95: float, stability_grade: str):
+        """Registra la misura di stabilità posturale ellittica BCEA della calibrazione."""
+        self.last_bcea_68 = float(bcea_68)
+        self.last_bcea_95 = float(bcea_95)
+        self.last_stability_grade = str(stability_grade)
 
     def record_fitts_assessment(self, fitts_summary: Dict[str, Any]):
         """
@@ -217,6 +228,11 @@ class ClinicalSessionLogger:
                 "best_effective_throughput_tpe": round(max([a.get("effective_throughput_tpe", 0.0) for a in self.fitts_assessments]), 2) if self.fitts_assessments else 0.0,
                 "mean_overall_throughput_bps": round(sum([a.get("mean_throughput_bps", 0.0) for a in self.fitts_assessments]) / len(self.fitts_assessments), 2) if self.fitts_assessments else 0.0,
             } if self.fitts_assessments else None,
+            "bcea_stability": {
+                "bcea_68_deg2": self.last_bcea_68,
+                "bcea_95_deg2": self.last_bcea_95,
+                "grade": self.last_stability_grade,
+            },
         }
 
     def generate_markdown_report(self, patient_id: str = "Paziente-Anonimo", notes: str = "") -> str:
@@ -245,6 +261,19 @@ class ClinicalSessionLogger:
 | **Tasso di Errore** | {f.get('error_rate_pct', 0.0)}% | Clic fuori bersaglio o interruzioni da spasmo |
 | **Dispersione Endpoint (σ)** | {f.get('endpoint_dispersion_sigma_px', 0.0)} px | Deviazione standard dei punti di arresto |
 | **Conformità Normativa** | {f.get('iso_conformance', 'ISO 9241-9 / ISO 9241-411')} | Standard internazionale non-keyboard input |
+"""
+
+        bcea_section = ""
+        if self.last_bcea_68 is not None:
+            bcea_section = f"""
+---
+
+### 5. 🎯 Stabilità Posturale & Fissazione Cefalica (BCEA)
+| Metrica Oftalmologica / Neurologica | Valore Misurato | Valutazione Clinica |
+| :--- | :--- | :--- |
+| **BCEA 68% (1 Deviazione Standard)** | **{self.last_bcea_68:.3f} deg²** | Area ellittica di dispersione posturale |
+| **BCEA 95% (Intervallo Confidenza)** | **{self.last_bcea_95:.3f} deg²** | Estensione del tremore/scostamento massimo |
+| **Grado di Stabilità Posturale** | **{self.last_stability_grade}** | Indice oggettivo di controllo motorio |
 """
 
         md = f"""# 🏥 STEADYMOTION AI — RELAZIONE CLINICA DI SESSIONE
@@ -288,7 +317,7 @@ class ClinicalSessionLogger:
 | **Cadute Cefaliche (Head-Drop)** | {e['head_drop_alerts']} | Possibile cedimento estensori del collo |
 | **Inclinazioni Laterali Eccessive (Tilt > 12°)** | {e['lateral_tilt_alerts']} | Asimmetria posturale o scivolamento |
 | **Allarmi Ergonomici Totali** | **{e['total_posture_warnings']}** | Indice complessivo di affaticamento |
-{fitts_section}
+{fitts_section}{bcea_section}
 ---
 
 ### 📝 Note Cliniche & Osservazioni del Terapista:

@@ -2487,6 +2487,177 @@ def test_adaptive_dwell_safety_guard():
     print(">>> TEST 47 SUPERATO! <<<")
 
 
+
+
+def test_gaze_sleep_and_wake_controller():
+    print("\n--- TEST 48: Controllore Sospensione & Risveglio a Sguardo Autonomo (SLA/Tetraplegia) ---")
+    from core.gaze_sleep import GazeSleepController
+
+    sleep_events = []
+    wake_events = []
+
+    ctrl = GazeSleepController(
+        wake_dwell_time=1.5,
+        on_sleep_callback=lambda: sleep_events.append("SLEEP"),
+        on_wake_callback=lambda: wake_events.append("WAKE"),
+    )
+    ctrl.set_wake_target_rect(900, 10, 1020, 70)
+
+    # 1. Stato Iniziale Attivo
+    assert ctrl.is_sleeping is False
+    st, prog = ctrl.update_sleep_state(500, 500, now=1.0)
+    assert st is False and prog == 0.0
+    print("Stato Iniziale Attivo: Clic e Dwell completamente operativi")
+
+    # 2. Innesco Sospensione Autonoma (Hover su Tile Sleep o F9)
+    ctrl.trigger_sleep()
+    assert ctrl.is_sleeping is True
+    assert len(sleep_events) == 1
+    print("Sospensione Autonoma Innescata: Clic Windows inibiti (Zero interferenza film/lettura)")
+
+    # 3. Sguardo fuori dal target di risveglio (es. centro schermo a leggere o guardare video)
+    st, prog = ctrl.update_sleep_state(500, 500, now=1.5)
+    assert st is True and prog == 0.0
+    st, prog = ctrl.update_sleep_state(600, 400, now=2.0)
+    assert st is True and prog == 0.0
+    print("Lettura / Visione Multimediale: Nessun falso risveglio su coordinate generiche")
+
+    # 4. Sguardo intenzionale sulla Wake Zone (x=960, y=40)
+    # t=3.0 -> Primo contatto con Wake Target
+    st, prog1 = ctrl.update_sleep_state(960, 40, now=3.0)
+    assert st is True
+
+    # 15 passi da 0.05s -> 0.75s di sosta continua (totale atteso 0.75 / 1.50 = 50%)
+    cur_t = 3.0
+    for _ in range(15):
+        cur_t += 0.05
+        st, prog2 = ctrl.update_sleep_state(960, 40, now=cur_t)
+
+    assert st is True and 0.40 <= prog2 <= 0.75
+    print(f"Sosta Volontaria su Wake Zone (0.75s): Caricamento {prog2*100:.1f}%")
+
+    # Altri passi da 0.05s fino a completamento risveglio
+    for _ in range(20):
+        cur_t += 0.05
+        st, prog3 = ctrl.update_sleep_state(960, 40, now=cur_t)
+        if not st:
+            break
+
+    assert ctrl.is_sleeping is False
+    assert len(wake_events) == 1
+    print("Risveglio Cosciente Completato: Puntamento e Clic ripristinati in piena autonomia")
+    print(">>> TEST 48 SUPERATO! <<<")
+
+
+def test_bcea_metric_stability_evaluation():
+    print("\n--- TEST 49: Indice Matematico di Stabilità Posturale BCEA (Bivariate Contour Ellipse Area) ---")
+    import math
+    from core.bcea_metric import BCEACalculator
+
+    calc = BCEACalculator()
+
+    # 1. Protezione Campioni Insufficienti
+    calc.add_sample(0.0, 0.0)
+    res_ins = calc.compute()
+    assert res_ins.stability_grade == "NON_SUFFICIENTE"
+    print("Campioni Insufficienti (N < 3): Gestiti con successo")
+
+    # 2. Soggetto Ultra-Stabile (Sano / Postura eccellente: sigma_x = 0.10 deg, sigma_y = 0.10 deg)
+    calc.reset()
+    for i in range(100):
+        t = i * 0.1
+        # Micro-oscillazione fisiologica < 0.10 gradi
+        gx = 0.10 * math.sin(t)
+        gy = 0.10 * math.cos(t * 1.3)
+        calc.add_sample(gx, gy)
+
+    res_stable = calc.compute()
+    assert res_stable.samples_count == 100
+    assert res_stable.bcea_68 <= 0.35, f"BCEA attesa <= 0.35 deg2, ottenuta {res_stable.bcea_68:.3f}"
+    assert res_stable.stability_grade == "ECCELLENTE"
+    print(f"Soggetto Stabile: BCEA68 = {res_stable.bcea_68:.3f} deg² | BCEA95 = {res_stable.bcea_95:.3f} deg² | Grado: {res_stable.stability_grade}")
+
+    # 3. Soggetto con Tremore Posturale Lieve/Moderato (Parkinson: ampiezza 0.50 deg)
+    calc.reset()
+    for i in range(100):
+        t = i * 0.1
+        gx = 0.50 * math.sin(t * 5.0)  # 5 Hz tremore
+        gy = 0.45 * math.cos(t * 4.8)
+        calc.add_sample(gx, gy)
+
+    res_tremor = calc.compute()
+    assert res_tremor.bcea_68 > 0.40, f"BCEA attesa > 0.40 deg2, ottenuta {res_tremor.bcea_68:.3f}"
+    print(f"Tremore Posturale (5 Hz): BCEA68 = {res_tremor.bcea_68:.3f} deg² | Grado: {res_tremor.stability_grade}")
+
+    # 4. Soggetto con Forte Instabilità Cefalica / Spasmi (ampiezza 1.50 deg -> Grado INSTABILE)
+    calc.reset()
+    for i in range(100):
+        t = i * 0.1
+        gx = 1.50 * math.sin(t * 2.0)
+        gy = 1.40 * math.cos(t * 1.8)
+        calc.add_sample(gx, gy)
+
+    res_unstable = calc.compute()
+    assert res_unstable.bcea_68 > 2.80, f"BCEA attesa > 2.80 deg2, ottenuta {res_unstable.bcea_68:.3f}"
+    assert res_unstable.stability_grade == "INSTABILE"
+    print(f"Forte Instabilità / Spasmi: BCEA68 = {res_unstable.bcea_68:.3f} deg² | Grado: {res_unstable.stability_grade}")
+    print(">>> TEST 49 SUPERATO! <<<")
+
+
+def test_bcea_clinical_session_logger_integration():
+    print("\n--- TEST 50: Integrazione Telemetria BCEA nel Clinical Session Logger & Report ---")
+    from core.clinical_logger import ClinicalSessionLogger
+
+    logger = ClinicalSessionLogger()
+    logger.record_bcea_stability(bcea_68=0.185, bcea_95=0.485, stability_grade="ECCELLENTE")
+
+    # 1. Verifica Session Summary JSON
+    summary = logger.get_session_summary()
+    assert "bcea_stability" in summary, "bcea_stability assente nel summary"
+    b_data = summary["bcea_stability"]
+    assert b_data["bcea_68_deg2"] == 0.185
+    assert b_data["grade"] == "ECCELLENTE"
+    print("Serializzazione JSON Telemetria BCEA: 100% Conforme")
+
+    # 2. Verifica Generazione Relazione Markdown Clinica
+    md = logger.generate_markdown_report(patient_id="Paziente-BCEA-01")
+    assert "Stabilità Posturale & Fissazione Cefalica (BCEA)" in md
+    assert "0.185 deg²" in md
+    assert "ECCELLENTE" in md
+    print("Generazione Tabella Markdown BCEA con Grado Clinico: Verificata con successo")
+    print(">>> TEST 50 SUPERATO! <<<")
+
+
+def test_multi_display_hotplug_synchronization():
+    print("\n--- TEST 51: Sincronizzazione Dinamica Hot-Plug Display & Geometria Monitor ---")
+    from core.dwell_safety import DwellSafetyGuard
+    from core.gaze_sleep import GazeSleepController
+
+    # Geometria iniziale: Monitor Singolo Full HD (1920x1080)
+    dsg = DwellSafetyGuard(vx=0, vy=0, vw=1920, vh=1080)
+    gaze = GazeSleepController()
+    gaze.set_wake_target_rect(960 - 60, 10, 960 + 60, 70)
+
+    # 1. Verifica Danger Zone 'X' a 1920x1080
+    assert dsg.is_in_danger_zone(1910, 15) is True
+    assert dsg.is_in_danger_zone(1500, 15) is False
+    print("Geometria Base (1920x1080): Danger Zone 'X' Windows correttamente posizionata")
+
+    # 2. Simulazione Hot-Plug: Collegamento Cavo HDMI a Display Esterno 4K (3840x2160)
+    dsg.update_screen_geometry(vx=0, vy=0, vw=3840, vh=2160)
+    wake_cx_4k = int(3840 * 0.5)
+    gaze.set_wake_target_rect(wake_cx_4k - 60, 10, wake_cx_4k + 60, 70)
+
+    # La vecchia coordinata x=1910 ora è nel mezzo dello schermo (SICURA)
+    assert dsg.is_in_danger_zone(1910, 15) is False
+    # La nuova coordinata 'X' a 3840 (x=3830, y=15) è ora la nuova DANGER ZONE
+    assert dsg.is_in_danger_zone(3830, 15) is True
+    # Il nuovo wake target è centrato a x=1920
+    assert gaze.wake_target_rect == (1860, 10, 1980, 70)
+    print("Hot-Plug Display 4K (3840x2160): Ricalcolo istantaneo Danger Zone 'X' e Wake Target")
+    print(">>> TEST 51 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -2535,8 +2706,12 @@ if __name__ == "__main__":
     test_anti_accidental_exit_safeguard()
     test_ambient_luminance_diagnostics()
     test_adaptive_dwell_safety_guard()
+    test_gaze_sleep_and_wake_controller()
+    test_bcea_metric_stability_evaluation()
+    test_bcea_clinical_session_logger_integration()
+    test_multi_display_hotplug_synchronization()
     print("\n========================================================")
-    print("TUTTI I 47 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 51 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

@@ -27,6 +27,7 @@ from core.copilot import CaregiverCoPilot
 from core.dsp_filter import PointFilter2D
 from core.dwell_clicker import DwellClicker
 from core.dwell_safety import DwellSafetyGuard
+from core.gaze_sleep import GazeSleepController
 from core.edge_scrolling import EdgeScrollController
 from core.ergonomics import ErgonomicsMonitor
 from core.audio_feedback import AudioFeedback
@@ -163,6 +164,15 @@ class SteadyMotionApp:
             click_callback=self._on_gesture_click,
             is_enabled=False,
         )
+
+        # Controllore di Sospensione e Risveglio a Sguardo Autonomo (Paziente SLA / Tetraplegia)
+        self.gaze_sleep = GazeSleepController(
+            wake_dwell_time=1.8,
+            on_sleep_callback=self._on_gaze_sleep,
+            on_wake_callback=self._on_gaze_wake,
+        )
+        wake_cx = int(self.mouse.vx + self.mouse.vw * 0.5)
+        self.gaze_sleep.set_wake_target_rect(wake_cx - 60, int(self.mouse.vy + 10), wake_cx + 60, int(self.mouse.vy + 70))
 
         # Telemetria Clinica & Cartella Riabilitativa Digitale (ASL/SSN)
         self.clinical_logger = ClinicalSessionLogger()
@@ -479,6 +489,15 @@ class SteadyMotionApp:
             self.mouse.click("left")
             self.audio_feedback.play("click_left")
 
+    def _on_gaze_sleep(self):
+        if self.mouse.is_dragging:
+            self.mouse.mouse_up("left")
+        self.dwell_clicker.cancel()
+        self.hud.hide()
+
+    def _on_gaze_wake(self):
+        self.audio_feedback.play("resume")
+
     def recenter(self):
         """Calibra la postura neutrale comoda del paziente come centro esatto del desktop."""
         if self.is_demo:
@@ -564,7 +583,10 @@ class SteadyMotionApp:
 
             # Controllo periodico cambio risoluzione o hotplug multi-monitor ogni 1.5s
             if t_now - last_metric_check > 1.5:
-                self.mouse.check_screen_metrics_changed()
+                if self.mouse.check_screen_metrics_changed():
+                    self.dwell_safety.update_screen_geometry(self.mouse.vx, self.mouse.vy, self.mouse.vw, self.mouse.vh)
+                    wake_cx = int(self.mouse.vx + self.mouse.vw * 0.5)
+                    self.gaze_sleep.set_wake_target_rect(wake_cx - 60, int(self.mouse.vy + 10), wake_cx + 60, int(self.mouse.vy + 70))
                 last_metric_check = t_now
 
             face_detected = False
