@@ -9,6 +9,7 @@ Progettata specificamente per pazienti con disabilità motorie gravi:
 5. Layout QWERTY, Simboli & Numeri, e Scheda Frasi Rapide AAC.
 """
 
+import ctypes
 import os
 import threading
 import tkinter as tk
@@ -46,8 +47,12 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         # Motore Sintesi Vocale Clinico Asincrono (Zero Marshalling Error)
         self.tts = TTSEngine(rate=0, volume=100)
 
-        # Motore Predittivo Intelligente (AAC Word Predictor)
+        # Motore Predittivo Intelligente (AAC Word Predictor) & Persistenza Lessico Utente
         self.word_predictor = WordPredictor()
+        self.lexicon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "user_lexicon.json"
+        )
+        self.word_predictor.load_user_lexicon(self.lexicon_path)
         self.sug_buttons: List[ctk.CTkButton] = []
 
         # Prontuario Frasi Clinico e Personalizzabile AAC
@@ -61,6 +66,7 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         self.typed_text.trace_add("write", lambda *args: self._update_suggestions())
         self._update_suggestions()
         self._apply_noactivate_style()
+        self.after(500, self._poll_foreground_target)
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -107,6 +113,15 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             progress_color="#10B981",
         )
         sw_inject.pack(side="left", padx=10)
+
+        # Badge di Tracciamento Focus Finestra Attiva
+        self.lbl_target = ctk.CTkLabel(
+            top_bar,
+            text="🎯 Destinazione: Desktop",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color="#10B981",
+        )
+        self.lbl_target.pack(side="left", padx=8)
 
         # Pulsante Sintesi Vocale
         btn_tts = ctk.CTkButton(
@@ -462,6 +477,12 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         success = self.phrasebook.add_phrase(cat, text)
         if success:
             self._render_aac_phrases()
+            self.word_predictor.learn_word(text)
+            try:
+                if hasattr(self, "lexicon_path") and self.lexicon_path:
+                    self.word_predictor.save_user_lexicon(self.lexicon_path)
+            except Exception:
+                pass
             if self.audio_feedback:
                 self.audio_feedback.play("success")
             try:
@@ -486,6 +507,11 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
                 pass
         # Apprendi frase nel dizionario predittivo
         self.word_predictor.learn_word(phrase)
+        try:
+            if hasattr(self, "lexicon_path") and self.lexicon_path:
+                self.word_predictor.save_user_lexicon(self.lexicon_path)
+        except Exception:
+            pass
         # Verbalizza subito con sintesi vocale
         self._speak_phrase(phrase)
         # Registrazione per telemetria clinica CAA (frase predefinita)
@@ -580,10 +606,15 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
 
         self.typed_text.set(new_text)
 
-        # Apprendimento adattivo in RAM (sia vocabolo che bigramma contestuale)
+        # Apprendimento adattivo in RAM (sia vocabolo che bigramma contestuale) e persistenza su disco
         if prev_word:
             self.word_predictor.learn_bigram(prev_word, suggestion)
         self.word_predictor.learn_word(suggestion)
+        try:
+            if hasattr(self, "lexicon_path") and self.lexicon_path:
+                self.word_predictor.save_user_lexicon(self.lexicon_path)
+        except Exception:
+            pass
 
         # Registrazione per telemetria clinica CAA
         if self.clinical_logger is not None:
@@ -613,6 +644,31 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
                 pass
         self._speak_phrase("Attenzione! Richiesta di aiuto immediato! Vieni qui per favore!")
 
+    def _poll_foreground_target(self):
+        """Verifica periodicamente quale finestra esterna ha il focus per informare il paziente."""
+        try:
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            if hwnd:
+                length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)
+                    title = buff.value.strip()
+                    if title and not any(k in title for k in ("SteadyMotion", "TASTIERA ASSISTIVA")):
+                        disp = title if len(title) <= 22 else title[:19] + "..."
+                        self.lbl_target.configure(text=f"🎯 {disp}", text_color="#10B981")
+                    elif any(k in title for k in ("SteadyMotion", "TASTIERA ASSISTIVA")):
+                        pass
+                    else:
+                        self.lbl_target.configure(text="🎯 Desktop", text_color="#94A3B8")
+        except Exception:
+            pass
+        try:
+            if self.winfo_exists():
+                self.after(500, self._poll_foreground_target)
+        except Exception:
+            pass
+
     def _speak_text(self):
         text = self.typed_text.get().strip()
         if text:
@@ -623,6 +679,11 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             self.tts.speak(text, interrupt=True)
 
     def _on_close(self):
+        try:
+            if hasattr(self, "lexicon_path") and self.lexicon_path:
+                self.word_predictor.save_user_lexicon(self.lexicon_path)
+        except Exception:
+            pass
         if hasattr(self, "tts") and self.tts:
             self.tts.stop()
         if self.on_close_callback:

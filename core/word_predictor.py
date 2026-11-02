@@ -13,6 +13,8 @@ Progettato specificamente per pazienti con grave disabilità motoria (SLA, tetra
 
 import json
 import os
+import shutil
+import tempfile
 from typing import Dict, List, Optional, Tuple
 
 
@@ -121,6 +123,49 @@ class WordPredictor:
                 for k, v in data.items():
                     if isinstance(k, str) and isinstance(v, str):
                         self.register_abbreviation(k, v)
+                return True
+        except Exception:
+            pass
+        return False
+
+    def save_user_lexicon(self, filepath: str) -> bool:
+        """Salva il lessico personalizzato e i bigrammi appresi dal paziente su file JSON."""
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+            data = {
+                "custom_words": self.custom_words,
+                "bigrams": self.bigrams,
+            }
+            dir_name = os.path.dirname(os.path.abspath(filepath))
+            with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8") as tf:
+                json.dump(data, tf, indent=2, ensure_ascii=False)
+                temp_name = tf.name
+            shutil.move(temp_name, filepath)
+            return True
+        except Exception:
+            return False
+
+    def load_user_lexicon(self, filepath: str) -> bool:
+        """Carica il lessico personalizzato e i bigrammi memorizzati da file JSON."""
+        if not os.path.exists(filepath):
+            return False
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                words = data.get("custom_words", {})
+                if isinstance(words, dict):
+                    for w, freq in words.items():
+                        if isinstance(w, str) and isinstance(freq, (int, float)):
+                            self.custom_words[w] = int(freq)
+                            self.insert(w, int(freq))
+                bigrams = data.get("bigrams", {})
+                if isinstance(bigrams, dict):
+                    for w1, next_map in bigrams.items():
+                        if isinstance(w1, str) and isinstance(next_map, dict):
+                            for w2, freq in next_map.items():
+                                if isinstance(w2, str) and isinstance(freq, (int, float)):
+                                    self.insert_bigram(w1, w2, int(freq))
                 return True
         except Exception:
             pass

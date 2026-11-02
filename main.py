@@ -33,6 +33,7 @@ from core.ergonomics import ErgonomicsMonitor
 from core.audio_feedback import AudioFeedback
 from core.gesture_trigger import GestureTrigger
 from core.magnetic_snapping import MagneticSnapper
+from core.wheelchair_jolt import WheelchairJoltFilter
 from core.tracker_engine import FaceTrackerEngine
 from core.utils import get_resource_path
 from core.virtual_input import (
@@ -87,13 +88,17 @@ class SteadyMotionApp:
             deadzone_radius=self.deadzone,
         )
 
-        # Dwell Clicker con tolleranza Leaky Bucket, Anti-Sweep Gate e Freno Spasmo
+        # Feedback Uditivo Asincrono dei Clic (Multi-Sensoriale)
+        self.audio_feedback = AudioFeedback(enabled=True)
+
+        # Dwell Clicker con tolleranza Leaky Bucket, Anti-Sweep Gate, Freno Spasmo e Micro-Tick di Cadenza
         self.dwell_clicker = DwellClicker(
             dwell_time=0.65,
             tolerance_radius=24.0,
             click_callback=self._on_dwell_click,
             progress_callback=self._on_dwell_progress,
             spasm_callback=self._on_spasm_shock,
+            cadence_callback=lambda level: self.audio_feedback.play("dwell_tick"),
         )
         self._base_dwell_time: float = self.dwell_clicker.dwell_time
         self.dwell_safety = DwellSafetyGuard(
@@ -114,8 +119,8 @@ class SteadyMotionApp:
         self.acoustic.is_enabled = False  # Spento di default, attivabile da preset o GUI
         self.acoustic.start()
 
-        # Feedback Uditivo Asincrono dei Clic (Multi-Sensoriale)
-        self.audio_feedback = AudioFeedback(enabled=True)
+        # Filtro Anti-Sobbalzo Meccanico per Carrozzine Elettroniche (Wheelchair Seismic Jolt Absorber)
+        self.wheelchair_jolt = WheelchairJoltFilter(is_enabled=True)
 
         # Monitor Ergonomico & Rilevamento Affaticamento Muscolare Cervicale
         self.ergonomics_monitor = ErgonomicsMonitor()
@@ -325,8 +330,18 @@ class SteadyMotionApp:
         CalibrationWindow(
             parent=self.root,
             pose_provider=self.get_current_pose,
-            on_calibration_complete=lambda gains, stats: self.apply_asymmetric_gains(gains),
+            on_calibration_complete=self._on_rom_calibration_complete,
         )
+
+    def _on_rom_calibration_complete(self, gains, stats):
+        self.apply_asymmetric_gains(gains)
+        if isinstance(stats, dict) and "bcea" in stats:
+            b = stats["bcea"]
+            self.clinical_logger.record_bcea_stability(
+                bcea_68=float(b.get("bcea_68", 0.0)),
+                bcea_95=float(b.get("bcea_95", 0.0)),
+                stability_grade=str(b.get("stability_grade", "NON_VALUTATA")),
+            )
 
     def open_floating_keyboard(self):
         """Apre o porta in primo piano la tastiera assistiva flottante."""
@@ -603,6 +618,12 @@ class SteadyMotionApp:
                 # Simulazione traiettoria cefalica + micro-tremore a 5 Hz
                 raw_x = 0.5 + 0.14 * math.sin(sim_t) + 0.002 * math.sin(t_now * 31.4)
                 raw_y = 0.5 + 0.10 * math.cos(sim_t * 0.8) + 0.002 * math.cos(t_now * 31.4)
+                raw_y, is_jolt = self.wheelchair_jolt.filter_y(raw_y, t_now)
+                if is_jolt:
+                    if self.dwell_clicker.progress > 0.0:
+                        self.dwell_clicker.cancel()
+                        self.clinical_logger.record_dwell_aborted()
+                    self.clinical_logger.record_wheelchair_jolt()
                 yaw = 7.0 * math.sin(sim_t)
                 pitch = 4.0 * math.cos(sim_t * 0.8)
                 roll = 2.0 * math.sin(sim_t * 0.5)
@@ -711,6 +732,12 @@ class SteadyMotionApp:
                 roll = res.roll
                 raw_x = res.cursor_raw_x
                 raw_y = res.cursor_raw_y
+                raw_y, is_jolt = self.wheelchair_jolt.filter_y(raw_y, t_now)
+                if is_jolt:
+                    if self.dwell_clicker.progress > 0.0:
+                        self.dwell_clicker.cancel()
+                        self.clinical_logger.record_dwell_aborted()
+                    self.clinical_logger.record_wheelchair_jolt()
 
                 if face_detected:
                     ergo_st = self.ergonomics_monitor.update(yaw, pitch, roll, now=t_now)

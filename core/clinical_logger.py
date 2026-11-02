@@ -50,6 +50,7 @@ class ClinicalSessionLogger:
         self.copilot_overrides: int = 0
         self.acoustic_clicks: int = 0
         self.gesture_clicks: int = 0
+        self.wheelchair_jolts_absorbed: int = 0
         self.total_cursor_distance_px: float = 0.0
         self._last_cursor_pos: Optional[Tuple[float, float]] = None
 
@@ -119,6 +120,10 @@ class ClinicalSessionLogger:
     def record_gesture_click(self, gesture: str):
         """Registra un clic azionato da gesto facciale (jaw_open / smile / brow)."""
         self.gesture_clicks += 1
+
+    def record_wheelchair_jolt(self):
+        """Registra un urto o scossone meccanico da carrozzina assorbito dal filtro."""
+        self.wheelchair_jolts_absorbed += 1
 
     def record_typing(self, raw_chars: int = 1):
         """Registra caratteri digitati individualmente sulla tastiera."""
@@ -208,6 +213,7 @@ class ClinicalSessionLogger:
                 "copilot_caregiver_interventions": self.copilot_overrides,
                 "acoustic_clicks": self.acoustic_clicks,
                 "gesture_clicks": self.gesture_clicks,
+                "wheelchair_jolts_absorbed": self.wheelchair_jolts_absorbed,
                 "emergency_calls_count": self.emergency_calls_count,
             },
             "aac_metrics": {
@@ -298,6 +304,7 @@ class ClinicalSessionLogger:
 | **Interventi Co-Pilot Caregiver** | {m['copilot_caregiver_interventions']} | Assistenza fisica dell'operatore |
 | **Clic Vocali / Acustici** | {m['acoustic_clicks']} | Trigger 'pop'/'puff' |
 | **Clic Gesti Facciali Silenziosi** | {m['gesture_clicks']} | FACS blendshapes (mandibola/sorriso) |
+| **Sobbalzi Carrozzina Neutralizzati** | {m.get('wheelchair_jolts_absorbed', 0)} | Filtro sedia a rotelle (dossi/soglie) |
 
 ---
 

@@ -18,6 +18,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import tkinter as tk
 import customtkinter as ctk
+from core.bcea_metric import BCEACalculator, BCEAResult
 
 try:
     import winsound
@@ -61,6 +62,8 @@ class CalibrationWindow(ctk.CTkToplevel):
         self.dwell_duration = 1.4  # Secondi di sosta stazionaria per punto
         self.samples: List[Dict[str, float]] = []
         self.point_results: List[Dict[str, float]] = []
+        self.bcea_calc = BCEACalculator()
+        self.center_bcea_result: Optional[BCEAResult] = None
         self.is_finished = False
 
         # Canvas a tutto schermo per grafica e animazione ad alto contrasto
@@ -142,6 +145,9 @@ class CalibrationWindow(ctk.CTkToplevel):
             "pitch": avg_pitch,
         })
 
+        if self.current_step == 0:
+            self.center_bcea_result = self.bcea_calc.compute()
+
         self._play_chime(880 if self.current_step < 4 else 1175)
 
         self.current_step += 1
@@ -173,6 +179,8 @@ class CalibrationWindow(ctk.CTkToplevel):
             pose = self.pose_provider()
             if pose.get("face_detected", True):
                 self.samples.append(pose)
+                if self.current_step == 0:
+                    self.bcea_calc.add_sample(pose.get("yaw", 0.0), pose.get("pitch", 0.0))
 
             # Calcolo avanzamento dwell temporizzato
             elapsed = time.perf_counter() - self.step_start_time
@@ -271,6 +279,14 @@ class CalibrationWindow(ctk.CTkToplevel):
             "dy_down": round(dy_down, 4),
         }
 
+        if self.center_bcea_result is not None:
+            rom_stats["bcea"] = {
+                "bcea_68": round(self.center_bcea_result.bcea_68, 4),
+                "bcea_95": round(self.center_bcea_result.bcea_95, 4),
+                "stability_grade": self.center_bcea_result.stability_grade,
+                "samples_count": self.center_bcea_result.samples_count,
+            }
+
         # Frame centrale del report
         report_frame = ctk.CTkFrame(self, fg_color="#162032", corner_radius=16, border_width=1, border_color="#38BDF8")
         report_frame.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.68, relheight=0.74)
@@ -322,6 +338,23 @@ class CalibrationWindow(ctk.CTkToplevel):
             diag_text = "✅ Mobilità Simmetrica ed Equilibrata: risposta uniforme su tutti i 4 quadranti dello schermo."
             diag_color = "#22C55E"
 
+        if self.center_bcea_result is not None:
+            bcea_colors = {
+                "ECCELLENTE": "#22C55E",
+                "BUONA": "#38BDF8",
+                "MODERATA": "#F59E0B",
+                "INSTABILE": "#EF4444",
+            }
+            b_col = bcea_colors.get(self.center_bcea_result.stability_grade, "#94A3B8")
+            bcea_card = ctk.CTkFrame(report_frame, fg_color="#0F172A", corner_radius=10)
+            bcea_card.pack(fill="x", padx=40, pady=(0, 10))
+            ctk.CTkLabel(
+                bcea_card,
+                text=f"🎯 Stabilità Posturale BCEA (Fissazione Neutrale): {self.center_bcea_result.bcea_68:.3f} deg²  —  Grado: {self.center_bcea_result.stability_grade}",
+                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+                text_color=b_col,
+            ).pack(pady=8, padx=15)
+
         diag_label = ctk.CTkLabel(
             report_frame,
             text=diag_text,
@@ -329,7 +362,7 @@ class CalibrationWindow(ctk.CTkToplevel):
             text_color=diag_color,
             wraplength=650,
         )
-        diag_label.pack(pady=15)
+        diag_label.pack(pady=10)
 
         btn_frame = ctk.CTkFrame(report_frame, fg_color="transparent")
         btn_frame.pack(pady=20)
@@ -343,6 +376,8 @@ class CalibrationWindow(ctk.CTkToplevel):
             self.current_step = 0
             self.point_results = []
             self.samples = []
+            self.bcea_calc.reset()
+            self.center_bcea_result = None
             self.is_finished = False
             self.step_start_time = time.perf_counter()
             self.__init__(self.master, self.pose_provider, self.on_calibration_complete)

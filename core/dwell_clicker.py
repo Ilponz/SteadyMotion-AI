@@ -30,6 +30,7 @@ class DwellClicker:
         click_callback: Optional[Callable[[str, int, int], None]] = None,
         progress_callback: Optional[Callable[[float, int, int], None]] = None,
         spasm_callback: Optional[Callable[[], None]] = None,
+        cadence_callback: Optional[Callable[[float], None]] = None,
     ):
         self._dwell_time = max(0.1, float(dwell_time))
         self._tolerance_radius = max(5.0, float(tolerance_radius))
@@ -43,6 +44,8 @@ class DwellClicker:
         self.click_callback = click_callback
         self.progress_callback = progress_callback
         self.spasm_callback = spasm_callback
+        self.cadence_callback = cadence_callback
+        self._last_tick_level: int = 0
 
         self.current_action = "left"
         self._is_enabled = True
@@ -184,6 +187,18 @@ class DwellClicker:
                 self.anchor_x = x
                 self.anchor_y = y
 
+        # Feedback acustico non-visivo di cadenza (33% e 66%) per ipovedenti
+        if self.progress >= 0.66 and self._last_tick_level < 2:
+            self._last_tick_level = 2
+            if self.cadence_callback:
+                self.cadence_callback(0.66)
+        elif self.progress >= 0.33 and self._last_tick_level < 1:
+            self._last_tick_level = 1
+            if self.cadence_callback:
+                self.cadence_callback(0.33)
+        elif self.progress < 0.15:
+            self._last_tick_level = 0
+
         if self.progress_callback and self.anchor_x is not None and self.anchor_y is not None:
             self.progress_callback(self.progress, int(self.anchor_x), int(self.anchor_y))
 
@@ -194,6 +209,7 @@ class DwellClicker:
             fire_x = int(self.anchor_x)
             fire_y = int(self.anchor_y)
             self.progress = 0.0
+            self._last_tick_level = 0
             if self.click_callback:
                 self.click_callback(self.current_action, fire_x, fire_y)
             if self.current_action in ("right", "double"):
@@ -210,6 +226,7 @@ class DwellClicker:
         self.has_fired = False
         self.last_update_time = None
         self._prev_sample_time = None
+        self._last_tick_level = 0
         if self.progress_callback and last_x >= 0 and last_y >= 0:
             self.progress_callback(0.0, last_x, last_y)
 

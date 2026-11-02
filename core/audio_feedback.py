@@ -35,6 +35,7 @@ SOUNDPACKS: Dict[str, Dict[str, Any]] = {
             "pause": [(700, 50)],
             "resume": [(1100, 40)],
             "alarm": [(1760, 120), (2200, 160), (1760, 120), (2640, 250)],
+            "dwell_tick": [(1500, 10)],
         },
     },
     "mellow": {
@@ -48,6 +49,7 @@ SOUNDPACKS: Dict[str, Dict[str, Any]] = {
             "pause": [(380, 50)],
             "resume": [(500, 40)],
             "alarm": [(660, 150), (880, 200), (660, 150), (1100, 250)],
+            "dwell_tick": [(600, 12)],
         },
     },
     "high_contrast": {
@@ -61,6 +63,7 @@ SOUNDPACKS: Dict[str, Dict[str, Any]] = {
             "pause": [(900, 60)],
             "resume": [(1500, 50)],
             "alarm": [(2000, 150), (2800, 200), (2000, 150), (3200, 300)],
+            "dwell_tick": [(2200, 15)],
         },
     },
     "subtle": {
@@ -74,6 +77,7 @@ SOUNDPACKS: Dict[str, Dict[str, Any]] = {
             "pause": [(600, 30)],
             "resume": [(900, 25)],
             "alarm": [(1400, 80), (1800, 100), (1400, 80), (2200, 150)],
+            "dwell_tick": [(1200, 8)],
         },
     },
     "mute": {
