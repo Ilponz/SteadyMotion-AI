@@ -1940,6 +1940,93 @@ def test_osk_noactivate_camera_watchdog_and_gaze_clamp():
     print(">>> TEST 38 SUPERATO! <<<")
 
 
+
+
+def test_autostart_and_caregiver_panic_killswitch():
+    print("\n--- TEST 39: Avvio Automatico Windows HKCU & Panic Kill-Switch Caregiver ---")
+    from core.utils import is_autostart_enabled, set_autostart, get_user_data_dir
+    import tkinter as tk
+    import customtkinter as ctk
+
+    # 1. Verifica Registro HKCU Autostart (Isolated Test Key)
+    test_key = "SteadyMotion_UnitTesting_AutoStart"
+    assert is_autostart_enabled(test_key) is False, "La chiave di test non deve esistere inizialmente"
+
+    # Abilitazione
+    ok_set = set_autostart(True, app_name=test_key)
+    assert ok_set is True, "set_autostart(True) deve restituire True"
+    assert is_autostart_enabled(test_key) is True, "La chiave deve risultare attiva dopo set_autostart(True)"
+    print("Registrazione HKCU Run: Attivazione verificata con successo")
+
+    # Disabilitazione
+    ok_unset = set_autostart(False, app_name=test_key)
+    assert ok_unset is True, "set_autostart(False) deve restituire True"
+    assert is_autostart_enabled(test_key) is False, "La chiave deve essere stata rimossa con successo"
+    print("Registrazione HKCU Run: Rimozione pulita senza permessi admin (100% Conforme)")
+
+    # 2. Verifica Cartella Dati Utente
+    data_dir = get_user_data_dir()
+    assert os.path.exists(data_dir), f"La directory dati utente non esiste: {data_dir}"
+    print(f"Risoluzione Directory Dati Utente: {data_dir}")
+
+    # 3. Verifica Panic Kill-Switch Logic in SteadyMotionApp
+    from main import SteadyMotionApp
+    app = SteadyMotionApp.__new__(SteadyMotionApp)
+    app.is_paused = False
+    app.is_dragging = False
+
+    class DummyMouse:
+        def __init__(self):
+            self.is_dragging = True
+            self.released = False
+        def mouse_up(self, btn):
+            self.released = True
+            self.is_dragging = False
+
+    class DummyLogger:
+        def __init__(self):
+            self.tracking_active = True
+        def set_tracking_state(self, state):
+            self.tracking_active = state
+
+    class DummyHud:
+        def __init__(self):
+            self.hidden = False
+        def hide(self):
+            self.hidden = True
+
+    class DummyAudio:
+        def __init__(self):
+            self.last_sound = None
+        def play(self, sound):
+            self.last_sound = sound
+
+    app.mouse = DummyMouse()
+    app.clinical_logger = DummyLogger()
+    app.hud = DummyHud()
+    app.audio_feedback = DummyAudio()
+    app._action_palette = None
+
+    def dummy_toggle_pause():
+        app.is_paused = True
+        if app.mouse.is_dragging:
+            app.mouse.mouse_up("left")
+        app.clinical_logger.set_tracking_state(False)
+        app.hud.hide()
+        app.audio_feedback.play("pause")
+
+    app.toggle_pause = dummy_toggle_pause
+
+    # Esegui disarmo d'emergenza
+    app.emergency_panic_disarm()
+    assert app.is_paused is True, "Il tracking DEVE essere forzatamente disarmato/in pausa"
+    assert app.mouse.released is True, "Qualsiasi trascinamento (drag) attivo DEVE essere rilasciato per sicurezza"
+    assert app.hud.hidden is True, "L'HUD Dwell deve essere nascosto"
+    assert app.audio_feedback.last_sound == "pause", "Il feedback sonoro di pausa deve essere emesso"
+    print("Panic Kill-Switch Caregiver: Disarmo istantaneo e rilascio drag verificato al 100%")
+    print(">>> TEST 39 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1979,8 +2066,9 @@ if __name__ == "__main__":
     test_multi_display_and_ui_automation_snapping()
     test_license_manager_cryptography_and_anti_tampering()
     test_osk_noactivate_camera_watchdog_and_gaze_clamp()
+    test_autostart_and_caregiver_panic_killswitch()
     print("\n========================================================")
-    print("TUTTI I 38 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 39 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

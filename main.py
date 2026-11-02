@@ -43,6 +43,10 @@ from gui.hud_overlay import DwellHUD
 # Costanti Virtual Key Windows per Hotkey Globali
 VK_F12 = 0x7B
 VK_F9 = 0x78
+VK_PAUSE = 0x13
+VK_CONTROL = 0x11
+VK_MENU = 0x12  # Alt
+VK_S = 0x53
 
 
 class SteadyMotionApp:
@@ -207,6 +211,7 @@ class SteadyMotionApp:
         # Stato tasti globali
         self.prev_f12 = False
         self.prev_f9 = False
+        self.prev_panic = False
 
     def _on_copilot_start(self):
         """Notifica acustica e disarmo temporaneo per intervento fisico caregiver."""
@@ -478,7 +483,7 @@ class SteadyMotionApp:
             self._action_palette.set_pause_state(self.is_paused)
 
     def _check_global_hotkeys(self):
-        """Intercetta F12 ed F9 a livello OS globale."""
+        """Intercetta F12, F9 e il Panic Kill-Switch (Pause o Ctrl+Alt+S) a livello OS globale."""
         f12_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(VK_F12) & 0x8000)
         if f12_pressed and not self.prev_f12:
             self.recenter()
@@ -488,6 +493,24 @@ class SteadyMotionApp:
         if f9_pressed and not self.prev_f9:
             self.toggle_pause()
         self.prev_f9 = f9_pressed
+
+        # Panic Kill-Switch Caregiver (Tasto Pause/Break o combinazione Ctrl+Alt+S)
+        pause_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(VK_PAUSE) & 0x8000)
+        ctrl_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(VK_CONTROL) & 0x8000)
+        alt_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(VK_MENU) & 0x8000)
+        s_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(VK_S) & 0x8000)
+        panic_pressed = pause_pressed or (ctrl_pressed and alt_pressed and s_pressed)
+
+        if panic_pressed and not self.prev_panic:
+            self.emergency_panic_disarm()
+        self.prev_panic = panic_pressed
+
+    def emergency_panic_disarm(self):
+        """Disarmo immediato di emergenza per il caregiver (Panic Kill-Switch)."""
+        if not self.is_paused:
+            self.toggle_pause()
+        elif self.mouse.is_dragging:
+            self.mouse.mouse_up("left")
 
     def _core_tracking_loop(self):
         """

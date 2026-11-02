@@ -94,3 +94,43 @@ def get_user_data_path(relative_path: str) -> str:
     full_path = os.path.join(base_dir, relative_path)
     os.makedirs(os.path.dirname(os.path.abspath(full_path)), exist_ok=True)
     return os.path.normpath(full_path)
+
+def is_autostart_enabled(app_name: str = "SteadyMotion AI") -> bool:
+    """Verifica se l'applicazione e registrata per l'avvio automatico all'accesso utente Windows."""
+    try:
+        import winreg
+        run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_READ) as key:
+            val, _ = winreg.QueryValueEx(key, app_name)
+            return bool(val)
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return False
+
+
+def set_autostart(enable: bool, app_name: str = "SteadyMotion AI") -> bool:
+    """
+    Abilita o disabilita l'avvio automatico di SteadyMotion AI con Windows (senza permessi admin).
+    Opera nella chiave HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run.
+    """
+    try:
+        import winreg
+        run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_ALL_ACCESS) as key:
+            if enable:
+                if getattr(sys, "frozen", False):
+                    cmd = f'"{sys.executable}"'
+                else:
+                    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    main_py = os.path.join(repo_root, "main.py")
+                    cmd = f'"{sys.executable}" "{main_py}"'
+                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, cmd)
+            else:
+                try:
+                    winreg.DeleteValue(key, app_name)
+                except FileNotFoundError:
+                    pass
+        return True
+    except Exception:
+        return False

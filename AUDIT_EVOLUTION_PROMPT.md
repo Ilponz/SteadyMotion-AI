@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **38 su 38 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **39 su 39 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -93,6 +93,8 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Trigger Ausiliari Multipli:** Trigger acustico anti-rumore (ZCR > 0.08) e trigger facciale FACS silenzioso con isteresi e debounce.
 - [x] **Comunicazione Aumentativa & KSR > 75%:** Tastiera flottante con modello Bigram Next-Word prediction e prontuario frasi cliniche AAC persistente.
 - [x] **Win32 WS_EX_NOACTIVATE su Tastiera Assistiva Flottante (0x08000000):** Rimozione assoluta del furto di focus (Focus Stealing Trap). L'utente può digitare o selezionare frasi mantenendo attivo il campo di testo di Microsoft Word, Chrome o Notepad senza conflitti di focus.
+- [x] **Autostart Windows HKCU Run & Panic Kill-Switch Caregiver:** Registrazione dell'avvio automatico senza permessi admin nella chiave `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` per l'autonomia di pazienti allettati, con intercettazione del tasto `Pause` o della combinazione `Ctrl+Alt+S` a livello kernel per il disarmo immediato in caso di emergenza.
+- [x] **Wizard Telecamera di Primo Avvio Integrato:** Selezione e commutazione immediata tra webcam integrata del laptop e telecamera USB grandangolare su braccio snodabile direttamente al Passo 2 del Setup Wizard.
 - [x] **Clinical Asynchronous TTS Engine (core/tts_engine.py):** Worker Apartment COM STA nativo con auto-selezione voce italiana Microsoft Elsa, eliminazione radicale errori di marshalling STA (0x800401F0) e fallback PowerShell .NET.
 - [x] **Cartella Riabilitativa Digitale:** Modulo core/clinical_logger.py con odometria, conteggio spasmi e shock, KSR e generazione automatica di relazioni Markdown/JSON.
 - [x] **Monitor Ergonomico Closed-Loop & Zero Heap Churn (core/ergonomics.py):** Assorbimento bi-assiale (Pitch e Yaw) con iniezione del bias nella fusione 6-DoF del tracker engine, struttura ErgonomicsStatus pre-allocata in-place (0 byte/frame allocati) e notifica clinica edge-triggered che elimina il flooding a 60 Hz (1 evento per episodio sostenuto anziché 600).

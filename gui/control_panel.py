@@ -29,7 +29,7 @@ from core.license_manager import LicenseManager
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-from core.utils import get_user_data_path
+from core.utils import get_user_data_path, get_user_data_dir, is_autostart_enabled, set_autostart
 CONFIG_FILE = get_user_data_path("config.json")
 
 PRESETS: Dict[str, Dict[str, Any]] = {
@@ -346,10 +346,36 @@ class ControlPanel:
             b = ctk.CTkButton(btn_row1, text=p_name.split()[0], font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), height=28, command=lambda n=p_name: self._apply_preset_by_name(n))
             b.pack(side="left", expand=True, fill="x", padx=2)
 
-        # Step 2: Postura
+        # Step 2: Telecamera & Postura
         step2 = ctk.CTkFrame(self.tab_wizard, corner_radius=8)
         step2.pack(fill="x", padx=6, pady=3)
-        ctk.CTkLabel(step2, text="PASSO 2: Posiziona il paziente a 50-70 cm dalla webcam", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=8, pady=(4, 2))
+        ctk.CTkLabel(step2, text="PASSO 2: Telecamera & Posizionamento (50-70 cm)", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=8, pady=(4, 2))
+
+        # Selezione rapida sorgente webcam integrata nel Wizard
+        row_cam_wiz = ctk.CTkFrame(step2, fg_color="transparent")
+        row_cam_wiz.pack(fill="x", padx=8, pady=(2, 2))
+        ctk.CTkLabel(row_cam_wiz, text="Sorgente Telecamera:", font=ctk.CTkFont(family="Segoe UI", size=11)).pack(side="left")
+
+        self.cam_combo_wiz = ctk.CTkComboBox(
+            row_cam_wiz,
+            values=["Webcam 0", "Webcam 1", "Webcam 2"],
+            command=self._on_select_camera,
+            width=130,
+        )
+        self.cam_combo_wiz.set("Webcam 0")
+        self.cam_combo_wiz.pack(side="right", padx=(4, 0))
+
+        btn_refresh_cam_wiz = ctk.CTkButton(
+            row_cam_wiz,
+            text="🔄",
+            width=36,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color="#334155",
+            hover_color="#475569",
+            command=self._refresh_camera_list,
+        )
+        btn_refresh_cam_wiz.pack(side="right", padx=2)
+
         self.lbl_wizard_align = ctk.CTkLabel(step2, text="Stato: Controlla che il volto sia rilevato e la luce sia OK", font=ctk.CTkFont(family="Segoe UI", size=10), text_color="#10b981")
         self.lbl_wizard_align.pack(anchor="w", padx=8, pady=(0, 4))
 
@@ -535,16 +561,12 @@ class ControlPanel:
         ).pack(anchor="w", padx=8, pady=(6, 2))
 
         shortcuts_text = (
-            "• F9: Avvia / Sospendi controllo mouse (Standby sicuro)
-"
-            "• F12: Centratura istantanea dello schermo sulla postura di riposo comoda
-"
-            "• Mouse USB Caregiver: Muovi il mouse fisico per pausa di 2s (Zero conflitti)
-"
-            "• Freno Oculare: Chiudi gli occhi per 1.5s per annullare qualsiasi clic in corso
-"
-            "• Cursore troppo veloce? -> Riduci il 'Guadagno Movimento Head' nella scheda Puntamento
-"
+            "• F9: Avvia / Sospendi controllo mouse (Standby sicuro)\n"
+            "• F12: Centratura istantanea dello schermo sulla postura di riposo comoda\n"
+            "• Pause o Ctrl+Alt+S: Panic Kill-Switch di emergenza caregiver\n"
+            "• Mouse USB Caregiver: Muovi il mouse fisico per pausa di 2s (Zero conflitti)\n"
+            "• Freno Oculare: Chiudi gli occhi per 1.5s per annullare qualsiasi clic in corso\n"
+            "• Cursore troppo veloce? -> Riduci il 'Guadagno Movimento Head' nella scheda Puntamento\n"
             "• Tremore continuo? -> Aumenta la 'Deadzone' (3.5 px) o attiva il profilo Parkinson"
         )
         ctk.CTkLabel(
@@ -1000,18 +1022,72 @@ class ControlPanel:
         )
         btn_diag.pack(fill="x", padx=10, pady=(6, 8))
 
+        # Card Sistema, Avvio Automatico & Sicurezza Caregiver
+        card_sys = ctk.CTkFrame(self.tab_settings, corner_radius=10)
+        card_sys.pack(fill="x", padx=6, pady=6)
+        ctk.CTkLabel(card_sys, text="SISTEMA & SICUREZZA CAREGIVER", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=10, pady=(6, 2))
+
+        # Switch Autostart
+        self.autostart_var = tk.BooleanVar(value=is_autostart_enabled())
+        sw_autostart = ctk.CTkSwitch(
+            card_sys,
+            text="Avvia SteadyMotion AI automaticamente all'avvio di Windows",
+            variable=self.autostart_var,
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            command=self._on_toggle_autostart,
+            progress_color="#10b981",
+        )
+        sw_autostart.pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkLabel(
+            card_sys,
+            text="Consente l'accesso immediato al puntatore e alla CAA per utenti non autonomi con le mani.",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color=("#64748b", "#94a3b8"),
+        ).pack(anchor="w", padx=10, pady=(0, 4))
+
+        # Box Scorciatoie Rapide Caregiver
+        hotkey_box = ctk.CTkFrame(card_sys, fg_color="#0F172A", corner_radius=8)
+        hotkey_box.pack(fill="x", padx=10, pady=4)
+        ctk.CTkLabel(
+            hotkey_box,
+            text="🚨 Scorciatoie: [F9] Avvia/Pausa | [F12] Ricentra | [Pause o Ctrl+Alt+S] Panic Kill-Switch",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color="#38BDF8",
+        ).pack(padx=8, pady=4)
+
+        # Pulsante Apertura Cartella Dati e Log Utente
+        btn_open_data = ctk.CTkButton(
+            card_sys,
+            text="📁 Apri Cartella Relazioni Cliniche & Log (%LOCALAPPDATA%)",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            height=28,
+            fg_color="#334155",
+            hover_color="#475569",
+            command=self._open_user_data_folder,
+        )
+        btn_open_data.pack(fill="x", padx=10, pady=(4, 6))
+
     def _refresh_camera_list(self):
-        """Scansiona gli indici video hardware e aggiorna il menu a tendina."""
+        """Scansiona gli indici video hardware e aggiorna tutti i menu a tendina."""
         try:
             from core.camera_worker import CameraWorker
             cams = CameraWorker.get_available_cameras(max_probe=4)
             if cams:
                 vals = [f"Webcam {idx}" for idx in cams]
-                self.cam_combo.configure(values=vals)
-                self.cam_combo.set(vals[0])
+                if hasattr(self, "cam_combo"):
+                    self.cam_combo.configure(values=vals)
+                    self.cam_combo.set(vals[0])
+                if hasattr(self, "cam_combo_wiz"):
+                    self.cam_combo_wiz.configure(values=vals)
+                    self.cam_combo_wiz.set(vals[0])
             else:
-                self.cam_combo.configure(values=["Nessuna webcam"])
-                self.cam_combo.set("Nessuna webcam")
+                vals = ["Nessuna webcam"]
+                if hasattr(self, "cam_combo"):
+                    self.cam_combo.configure(values=vals)
+                    self.cam_combo.set("Nessuna webcam")
+                if hasattr(self, "cam_combo_wiz"):
+                    self.cam_combo_wiz.configure(values=vals)
+                    self.cam_combo_wiz.set("Nessuna webcam")
         except Exception:
             pass
 
@@ -1021,6 +1097,10 @@ class ControlPanel:
             return
         try:
             cam_idx = int(choice.replace("Webcam ", "").strip())
+            if hasattr(self, "cam_combo") and self.cam_combo.get() != choice:
+                self.cam_combo.set(choice)
+            if hasattr(self, "cam_combo_wiz") and self.cam_combo_wiz.get() != choice:
+                self.cam_combo_wiz.set(choice)
             if self.on_switch_camera:
                 ok = self.on_switch_camera(cam_idx)
                 if ok:
