@@ -22,6 +22,7 @@ from core.acoustic_trigger import AcousticTrigger
 from core.ballistics import BallisticTransfer
 from core.camera_worker import CameraWorker
 from core.clinical_logger import ClinicalSessionLogger
+from core.license_manager import LicenseManager
 from core.copilot import CaregiverCoPilot
 from core.dsp_filter import PointFilter2D
 from core.dwell_clicker import DwellClicker
@@ -135,6 +136,9 @@ class SteadyMotionApp:
         # Telemetria Clinica & Cartella Riabilitativa Digitale (ASL/SSN)
         self.clinical_logger = ClinicalSessionLogger()
 
+        # Gestione Licenza Commerciale & Periodo di Prova
+        self.license_manager = LicenseManager(config_dir="config")
+
         # Camera Worker (Triple Buffering, Buffer=1, FourCC MJPG, 60 FPS, Event-Driven)
         self.camera = CameraWorker(
             camera_index=0,
@@ -167,6 +171,7 @@ class SteadyMotionApp:
             on_open_palette=self.open_action_palette,
             on_switch_camera=self.switch_camera_source,
             clinical_logger=self.clinical_logger,
+            license_manager=self.license_manager,
         )
         self.panel.demo_mode.set(self.is_demo)
         self._action_palette = None

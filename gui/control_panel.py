@@ -23,6 +23,7 @@ import customtkinter as ctk
 
 from core.profile_manager import ProfileManager
 from core.fitts_evaluator import FittsEvaluator
+from core.license_manager import LicenseManager
 
 # Configurazione iniziale di CustomTkinter
 ctk.set_appearance_mode("Dark")
@@ -85,7 +86,9 @@ class ControlPanel:
         on_open_palette: Optional[Callable[[], None]] = None,
         on_switch_camera: Optional[Callable[[int], bool]] = None,
         clinical_logger: Optional[Any] = None,
+        license_manager: Optional[LicenseManager] = None,
     ):
+        self.license_manager = license_manager if license_manager is not None else LicenseManager()
         self.root = root
         self.on_param_change = on_param_change
         self.on_recenter = on_recenter
@@ -195,6 +198,16 @@ class ControlPanel:
         )
         self.lbl_light_badge.pack(side="right", padx=4)
 
+        lic_badge_text = "PRO" if self.license_manager.is_fully_licensed else f"TRIAL ({self.license_manager.remaining_trial_days}d)"
+        lic_badge_col = "#10b981" if self.license_manager.is_fully_licensed else "#f59e0b"
+        self.lbl_license_pill = ctk.CTkLabel(
+            sub_row,
+            text=lic_badge_text,
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color=lic_badge_col,
+        )
+        self.lbl_license_pill.pack(side="right", padx=4)
+
         # 2. Banner di Sicurezza Primario (Arm / Disarm Prominente)
         self.safety_banner = ctk.CTkFrame(self.root, corner_radius=10, fg_color=("#fef3c7", "#1e293b"), border_width=1, border_color="#d97706")
         self.safety_banner.pack(fill="x", padx=14, pady=4)
@@ -278,6 +291,7 @@ class ControlPanel:
         self.tab_radar = self.tabview.add("👁️ Postura")
         self.tab_aac = self.tabview.add("💬 CAA")
         self.tab_settings = self.tabview.add("⚙️ Temi")
+        self.tab_license = self.tabview.add("🔐 Licenza Pro")
 
         self._build_tab_wizard()
         self._build_tab_tutorial()
@@ -287,6 +301,7 @@ class ControlPanel:
         self._build_tab_radar()
         self._build_tab_aac()
         self._build_tab_settings()
+        self._build_tab_license()
 
         # 4. Footer con Switch Demo Mode Offline & FPS
         footer = ctk.CTkFrame(self.root, corner_radius=10)
@@ -1011,6 +1026,178 @@ class ControlPanel:
                     self.demo_mode.set(False)
         except Exception:
             pass
+
+    # ---------------- TAB 9: LICENZA & CERTIFICAZIONE PRO ----------------
+    def _build_tab_license(self):
+        # 1. Card Stato Licenza
+        card_status = ctk.CTkFrame(self.tab_license, corner_radius=10)
+        card_status.pack(fill="x", padx=6, pady=6)
+
+        lbl_status_title, lbl_status_desc, status_color = self.license_manager.get_status_display()
+
+        self.lbl_lic_badge = ctk.CTkLabel(
+            card_status,
+            text=f"● {lbl_status_title}",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color=status_color,
+        )
+        self.lbl_lic_badge.pack(anchor="w", padx=12, pady=(10, 2))
+
+        self.lbl_lic_desc = ctk.CTkLabel(
+            card_status,
+            text=lbl_status_desc,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=("#64748b", "#94a3b8"),
+            wraplength=480,
+            justify="left",
+        )
+        self.lbl_lic_desc.pack(anchor="w", padx=12, pady=(0, 10))
+
+        # 2. Card Identificativo Hardware Machine ID
+        card_id = ctk.CTkFrame(self.tab_license, corner_radius=10)
+        card_id.pack(fill="x", padx=6, pady=4)
+
+        ctk.CTkLabel(
+            card_id,
+            text="IDENTIFICATIVO UNIVOCO COMPUTER (MACHINE ID)",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+        ).pack(anchor="w", padx=12, pady=(8, 2))
+
+        row_id = ctk.CTkFrame(card_id, fg_color="transparent")
+        row_id.pack(fill="x", padx=12, pady=(2, 6))
+
+        lbl_mach = ctk.CTkLabel(
+            row_id,
+            text=self.license_manager.machine_id,
+            font=ctk.CTkFont(family="Consolas", size=15, weight="bold"),
+            text_color=("#0284c7", "#38bdf8"),
+        )
+        lbl_mach.pack(side="left")
+
+        def _copy_id():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(self.license_manager.machine_id)
+            btn_copy.configure(text="✅ Copiato!")
+            self.root.after(2000, lambda: btn_copy.configure(text="📋 Copia ID"))
+
+        btn_copy = ctk.CTkButton(
+            row_id,
+            text="📋 Copia ID",
+            width=100,
+            height=28,
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            command=_copy_id,
+        )
+        btn_copy.pack(side="right")
+
+        ctk.CTkLabel(
+            card_id,
+            text="Invia questo codice identificativo all'autore al momento dell'acquisto per ricevere la chiave Pro personalizzata.",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color=("#64748b", "#94a3b8"),
+            wraplength=480,
+            justify="left",
+        ).pack(anchor="w", padx=12, pady=(0, 8))
+
+        # 3. Card Attivazione Codice
+        card_act = ctk.CTkFrame(self.tab_license, corner_radius=10)
+        card_act.pack(fill="x", padx=6, pady=4)
+
+        ctk.CTkLabel(
+            card_act,
+            text="ATTIVAZIONE CHIAVE SERIALE PRO",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+        ).pack(anchor="w", padx=12, pady=(8, 2))
+
+        self.key_entry_var = tk.StringVar(value="")
+        entry_key = ctk.CTkEntry(
+            card_act,
+            textvariable=self.key_entry_var,
+            placeholder_text="Incolla codice licenza (es. SM-PRO-XXXXXXXX-XXXX-XXXX)",
+            font=ctk.CTkFont(family="Consolas", size=12),
+            height=34,
+        )
+        entry_key.pack(fill="x", padx=12, pady=(4, 6))
+
+        self.lbl_act_feedback = ctk.CTkLabel(
+            card_act,
+            text="",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color="#10b981",
+        )
+        self.lbl_act_feedback.pack(anchor="w", padx=12, pady=(0, 4))
+
+        def _do_activate():
+            entered = self.key_entry_var.get().strip()
+            ok, msg = self.license_manager.activate_key(entered)
+            if ok:
+                self.lbl_act_feedback.configure(text=f"✅ {msg}", text_color="#10b981")
+                lbl_t, lbl_d, col = self.license_manager.get_status_display()
+                self.lbl_lic_badge.configure(text=f"● {lbl_t}", text_color=col)
+                self.lbl_lic_desc.configure(text=lbl_d)
+                self.lbl_license_pill.configure(text="PRO", text_color="#10b981")
+            else:
+                self.lbl_act_feedback.configure(text=f"❌ {msg}", text_color="#ef4444")
+
+        btn_act = ctk.CTkButton(
+            card_act,
+            text="🚀 Sblocca SteadyMotion Pro a Vita",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            height=34,
+            fg_color="#10b981",
+            hover_color="#059669",
+            command=_do_activate,
+        )
+        btn_act.pack(fill="x", padx=12, pady=(4, 10))
+
+        # 4. Card Documentazione & Relazioni Cliniche
+        card_docs = ctk.CTkFrame(self.tab_license, corner_radius=10)
+        card_docs.pack(fill="x", padx=6, pady=4)
+
+        ctk.CTkLabel(
+            card_docs,
+            text="DOCUMENTAZIONE CLINICA & MDR SAMD CLASSE I",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+        ).pack(anchor="w", padx=12, pady=(8, 4))
+
+        row_docs = ctk.CTkFrame(card_docs, fg_color="transparent")
+        row_docs.pack(fill="x", padx=10, pady=(0, 8))
+
+        def _open_reports_folder():
+            rep_path = os.path.abspath("reports")
+            os.makedirs(rep_path, exist_ok=True)
+            try:
+                os.startfile(rep_path)
+            except Exception:
+                pass
+
+        def _open_mdr_docs():
+            doc_path = os.path.abspath("docs/medical_device_mdr")
+            if os.path.exists(doc_path):
+                try:
+                    os.startfile(doc_path)
+                except Exception:
+                    pass
+
+        btn_rep = ctk.CTkButton(
+            row_docs,
+            text="📁 Cartella Referti Clinici",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color="#334155",
+            hover_color="#475569",
+            command=_open_reports_folder,
+        )
+        btn_rep.pack(side="left", expand=True, fill="x", padx=2)
+
+        btn_ifu = ctk.CTkButton(
+            row_docs,
+            text="📄 Fascicolo Tecnico MDR",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color="#334155",
+            hover_color="#475569",
+            command=_open_mdr_docs,
+        )
+        btn_ifu.pack(side="right", expand=True, fill="x", padx=2)
 
     # ---------------- HELPERS UI & CALLBACKS ----------------
     def _create_slider_row(self, parent, label_text, var, from_, to, param_name, fmt="{:.2f}"):

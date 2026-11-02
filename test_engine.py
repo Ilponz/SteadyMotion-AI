@@ -1786,6 +1786,89 @@ def test_multi_display_and_ui_automation_snapping():
     print(">>> TEST 36 SUPERATO! <<<")
 
 
+def test_license_manager_cryptography_and_anti_tampering():
+    print("\n--- TEST 37: Modulo Licenza Offline, Crittografia HMAC-SHA256 & Anti-Tampering ---")
+    import shutil
+    from core.license_manager import (
+        LicenseManager,
+        LicenseStatus,
+        get_system_machine_id,
+        generate_license_key,
+        verify_license_key,
+    )
+
+    # 1. Determinismo Machine ID
+    mid1 = get_system_machine_id()
+    mid2 = get_system_machine_id()
+    assert mid1 == mid2, "Machine ID deve essere deterministico e costante"
+    assert mid1.startswith("SM-") and len(mid1) == 12, f"Formato Machine ID anomalo: {mid1}"
+    print(f"Machine ID Deterministico Conforme: {mid1}")
+
+    # 2. Generazione e Verifica Chiave Node-Locked (Legata alla Macchina)
+    pro_key = generate_license_key(mid1, tier="PRO")
+    print(f"Chiave Node-Locked Generata: {pro_key}")
+    ok, tier, msg = verify_license_key(pro_key, mid1)
+    assert ok is True and tier == "PRO", f"Verifica chiave valida fallita: {msg}"
+    print("Verifica Crittografica Node-Locked: 100% Bit-Exact")
+
+    # 3. Generazione e Verifica Chiave Universal (Clinica / Multi-Postazione)
+    univ_key = generate_license_key("UNIV2026", tier="PRO")
+    print(f"Chiave Universale Generata: {univ_key}")
+    ok_u, tier_u, _ = verify_license_key(univ_key, "SM-ANYOTHER-9999")
+    assert ok_u is True and tier_u == "PRO", "Chiave universale deve validare su qualsiasi Machine ID"
+    print("Verifica Chiave Universale Multi-PC: Conforme")
+
+    # 4. Rifiuto Manomissioni e Cross-Machine
+    # 4.1 Chiave per un'altra macchina usata su questo PC
+    ok_fake, _, msg_fake = verify_license_key("SM-PRO-00001111-986F-FEFD", mid1)
+    assert ok_fake is False and "un altro computer" in msg_fake
+    print("Isolamento Hardware: Chiave aliena respinta con successo")
+
+    # 4.2 Firma corrotta (anche 1 solo carattere alterato)
+    corrupted_key = pro_key[:-1] + ("A" if pro_key[-1] != "A" else "B")
+    ok_corrupt, _, msg_corrupt = verify_license_key(corrupted_key, mid1)
+    assert ok_corrupt is False and "non valido o firma contraffatta" in msg_corrupt
+    print("Rilevamento Manomissione Bit-Flip Firma HMAC: 100% Respinto")
+
+    # 5. Ciclo di Vita LicenseManager & Protezione Trial
+    test_lic_dir = "config/test_license_audit_tmp"
+    if os.path.exists(test_lic_dir):
+        shutil.rmtree(test_lic_dir)
+
+    lm = LicenseManager(config_dir=test_lic_dir)
+    assert lm.status == LicenseStatus.TRIAL_ACTIVE
+    assert lm.remaining_trial_days == 14
+    assert lm.is_pro_active is True, "Nel periodo di prova di 14 giorni le funzioni Pro devono essere attive"
+    assert lm.is_fully_licensed is False, "Il periodo di prova non e una licenza permanente"
+    print(f"Periodo di Prova Inizializzato: {lm.remaining_trial_days} giorni rimanenti")
+
+    # 5.1 Attivazione con chiave valida
+    act_ok, act_msg = lm.activate_key(pro_key)
+    assert act_ok is True
+    assert lm.status == LicenseStatus.PRO_ACTIVE
+    assert lm.is_fully_licensed is True
+    print("Attivazione Licenza Pro su LicenseManager: 100% Convalidata e Persistita")
+
+    # 5.2 Ricaricamento da disco dello stato attivato
+    lm2 = LicenseManager(config_dir=test_lic_dir)
+    assert lm2.status == LicenseStatus.PRO_ACTIVE
+    assert lm2.is_fully_licensed is True
+    print("Persistenza e Ripristino Stato Licenza da Disco: Bit-Exact")
+
+    # 5.3 Scadenza Periodo di Prova
+    lm2.reset_for_testing(expire_trial=True)
+    assert lm2.status == LicenseStatus.TRIAL_EXPIRED
+    assert lm2.is_pro_active is False
+    assert lm2.remaining_trial_days == 0
+    print("Scadenza Periodo di Prova (Modalita Community Base): Rilevata e Applicata")
+
+    # Pulizia
+    if os.path.exists(test_lic_dir):
+        shutil.rmtree(test_lic_dir)
+
+    print(">>> TEST 37 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1823,8 +1906,9 @@ if __name__ == "__main__":
     test_acoustic_trigger_noise_immunity_and_pop_detection()
     test_fitts_assessment_integration_in_clinical_session()
     test_multi_display_and_ui_automation_snapping()
+    test_license_manager_cryptography_and_anti_tampering()
     print("\n========================================================")
-    print("TUTTI I 36 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 37 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 
