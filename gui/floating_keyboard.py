@@ -134,6 +134,19 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         )
         btn_alarm.pack(side="right", padx=4)
 
+        # Pulsante Salva nei Rapidi AAC
+        btn_save = ctk.CTkButton(
+            top_bar,
+            text="➕ Salva nei Rapidi",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            height=26,
+            width=120,
+            fg_color="#059669",
+            hover_color="#047857",
+            command=self._handle_save_phrase,
+        )
+        btn_save.pack(side="right", padx=4)
+
         # Pulsante Cancella Tutto
         btn_clear = ctk.CTkButton(
             top_bar,
@@ -393,6 +406,7 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
                 height=40,
                 command=lambda p=phrase: self._handle_phrase_click(p),
             )
+            btn.bind("<Button-3>", lambda e, p=phrase, c=cat: self._handle_phrase_right_click(c, p))
             btn.grid(row=r, column=c, padx=3, pady=3, sticky="nsew")
             self.aac_grid_frame.grid_columnconfigure(c, weight=1)
             self.aac_grid_frame.grid_rowconfigure(r, weight=1)
@@ -438,6 +452,30 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
                 self.virtual_input.send_key_event(0x0D)
             except Exception:
                 pass
+
+    def _handle_save_phrase(self):
+        """Salva il testo digitato nei prontuari rapidi AAC della categoria attiva."""
+        text = self.typed_text.get().strip()
+        if not text:
+            return
+        cat = self.current_aac_category.get() or "COMUNICAZIONE_SOCIALE"
+        success = self.phrasebook.add_phrase(cat, text)
+        if success:
+            self._render_aac_phrases()
+            if self.audio_feedback:
+                self.audio_feedback.play("success")
+            try:
+                self.tabview.set("💬 Frasi Rapide Assistive")
+            except Exception:
+                pass
+
+    def _handle_phrase_right_click(self, category: str, phrase: str):
+        """Elimina una frase con clic destro (funzione Caregiver)."""
+        removed = self.phrasebook.remove_phrase(category, phrase)
+        if removed:
+            self._render_aac_phrases()
+            if self.audio_feedback:
+                self.audio_feedback.play("click")
 
     def _handle_phrase_click(self, phrase: str):
         self.typed_text.set(phrase)

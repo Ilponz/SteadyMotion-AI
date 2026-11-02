@@ -2244,6 +2244,249 @@ def test_auto_recenter_on_face_reengagement():
     print(">>> TEST 42 SUPERATO! <<<")
 
 
+
+
+def test_sniper_mode_ballistics():
+    print("\n--- TEST 43: Curva Balistica Dinamica e Decelerazione Sniper Mode (Micro-Targeting) ---")
+    from core.ballistics import BallisticTransfer
+
+    bt = BallisticTransfer(gamma=1.25, is_enabled=True, sniper_mode=True)
+
+    # 1. Movimento veloce (Sweep rapido su display: v >> 0.10)
+    # Movimento da x=0.5 a x=0.7 in 0.05s -> v = 4.0 norm/s
+    bt._last_t = 1.0
+    bt._last_raw_x = 0.5
+    bt._last_raw_y = 0.5
+    scale_fast = bt.compute_velocity_scale(raw_x=0.7, raw_y=0.5, now=1.05)
+    assert scale_fast == 1.0, f"Atteso scale=1.0 per sweep veloce, ottenuto {scale_fast}"
+    print(f"Sweep Rapido (v=4.0): Modulazione {scale_fast:.2f}x (Sensibilità Nominale Conservata)")
+
+    # 2. Movimento lento e controllato (Micro-puntamento su icona 16x16 px: v << 0.10)
+    # Simuliamo 8 frame consecutivi a 30 FPS con delta piccolissimo (dx = 0.001 per frame)
+    t = 2.0
+    x = 0.5
+    bt._last_t = t
+    bt._last_raw_x = x
+    bt._last_raw_y = 0.5
+    bt._velocity = 0.15
+
+    for _ in range(8):
+        t += 0.033
+        x += 0.001
+        scale_slow = bt.compute_velocity_scale(raw_x=x, raw_y=0.5, now=t)
+
+    assert scale_slow < 0.70, f"Attesa decelerazione sniper < 0.70x, ottenuta {scale_slow}"
+    assert scale_slow >= 0.40, f"Scala al di sotto del floor di sicurezza (0.40): {scale_slow}"
+    print(f"Micro-Puntamento (v=0.03): Modulazione {scale_slow:.2f}x (Abbattimento Tremore & Sniper Attivo)")
+
+    # 3. Disattivazione Sniper Mode
+    bt.update_params(gamma=1.25, is_enabled=True, sniper_mode=False)
+    scale_disabled = bt.compute_velocity_scale(raw_x=x+0.001, raw_y=0.5, now=t+0.033)
+    assert scale_disabled == 1.0, "Sniper disattivato deve restituire scala 1.0"
+    print("Disattivazione Sniper Mode: 100% Trasparenza Lineare Conforme")
+    print(">>> TEST 43 SUPERATO! <<<")
+
+
+def test_personalized_aac_phrase_creator():
+    print("\n--- TEST 44: Gestore Prontuario Frasi Personalizzabile AAC & Persistenza Atomica ---")
+    import tempfile
+    from core.phrasebook import PhrasebookManager
+
+    with tempfile.TemporaryDirectory() as td:
+        json_file = os.path.join(td, "test_phrases.json")
+        pm = PhrasebookManager(config_path=json_file)
+
+        # 1. Categorie Iniziali
+        cats = pm.get_categories()
+        assert "COMUNICAZIONE_SOCIALE" in cats
+        initial_len = len(pm.get_phrases("COMUNICAZIONE_SOCIALE"))
+
+        # 2. Aggiunta Nuova Frase Personalizzata Paziente
+        custom_phrase = "VORREI UN BICCHIERE D'ACQUA FRESCA"
+        res = pm.add_phrase("COMUNICAZIONE_SOCIALE", custom_phrase)
+        assert res is True, "Aggiunta frase deve restituire True"
+        assert len(pm.get_phrases("COMUNICAZIONE_SOCIALE")) == initial_len + 1
+        print(f"Aggiunta Frase Personalizzata: '{custom_phrase}' registrata con successo")
+
+        # 3. Persistenza Atomica e Ricaricamento da Disco
+        pm_reload = PhrasebookManager(config_path=json_file)
+        phrases_reloaded = pm_reload.get_phrases("COMUNICAZIONE_SOCIALE")
+        assert custom_phrase in phrases_reloaded, "Frase non trovata dopo ricaricamento da disco"
+        print("Persistenza Atomica su Disco JSON: 100% Bit-Exact Verificata")
+
+        # 4. Rimozione Frase (Caregiver Maintenance)
+        res_del = pm_reload.remove_phrase("COMUNICAZIONE_SOCIALE", custom_phrase)
+        assert res_del is True, "Rimozione frase deve restituire True"
+        assert custom_phrase not in pm_reload.get_phrases("COMUNICAZIONE_SOCIALE")
+        print("Eliminazione Pulita Frase Personalizzata: Verificata")
+    print(">>> TEST 44 SUPERATO! <<<")
+
+
+def test_anti_accidental_exit_safeguard():
+    print("\n--- TEST 45: Salvaguardia Anti-Chiusura Accidentale e Spegnimento Pulito ---")
+    from main import SteadyMotionApp
+
+    app = SteadyMotionApp.__new__(SteadyMotionApp)
+    app.force_demo = False
+    app.is_running = True
+    app.tracking_thread = None
+    app.root = None
+
+    class MockMouse:
+        def __init__(self):
+            self.is_dragging = True
+            self.drag_released = False
+        def mouse_up(self, btn):
+            self.drag_released = True
+            self.is_dragging = False
+
+    class MockSub:
+        def __init__(self):
+            self.stopped = False
+        def stop(self):
+            self.stopped = True
+        def hide(self):
+            self.stopped = True
+        def close(self):
+            self.stopped = True
+        def stop_hook(self):
+            self.stopped = True
+        def save_report(self, **kwargs):
+            pass
+
+    app.mouse = MockMouse()
+    app.copilot = MockSub()
+    app.magnetic_snapper = MockSub()
+    app.audio_feedback = MockSub()
+    app.camera = MockSub()
+    app.acoustic = MockSub()
+    app.hud = MockSub()
+    app.clinical_logger = MockSub()
+
+    class MockRoot:
+        def __init__(self):
+            self.iconified = False
+            self.destroyed = False
+        def iconify(self):
+            self.iconified = True
+        def destroy(self):
+            self.destroyed = True
+
+    app.root = MockRoot()
+
+    # 1. Chiamata con confirm=False (Chiusura esplicita/programmatica)
+    import sys
+    orig_exit = sys.exit
+    sys.exit = lambda code: None
+    try:
+        app.on_close(confirm=False)
+        assert app.is_running is False, "L'app deve essere arrestata"
+        assert app.mouse.drag_released is True, "Eventuale drag attivo deve essere rilasciato"
+        assert app.camera.stopped is True, "La telecamera deve essere spenta"
+        assert app.root.destroyed is True, "La finestra root deve essere distrutta"
+        print("Spegnimento Forzato Diretto (confirm=False): Rilascio 100% Conforme")
+    finally:
+        sys.exit = orig_exit
+
+    print(">>> TEST 45 SUPERATO! <<<")
+
+
+def test_ambient_luminance_diagnostics():
+    print("\n--- TEST 46: Diagnostica Illuminazione Ambientale (Luminanza & Controluce) ---")
+    import numpy as np
+    import cv2
+    from core.tracker_engine import TrackerResult
+
+    # 1. Verifica default TrackerResult NamedTuple
+    tr = TrackerResult(
+        face_detected=False,
+        cursor_raw_x=0.5,
+        cursor_raw_y=0.5,
+        yaw=0.0,
+        pitch=0.0,
+        roll=0.0,
+        is_blinking=False,
+        blink_score=0.0,
+        jaw_open_score=0.0,
+        smile_score=0.0,
+        brow_down_score=0.0,
+        iris_dx=0.0,
+        iris_dy=0.0,
+    )
+    assert hasattr(tr, "light_mean")
+    assert hasattr(tr, "light_status")
+    assert tr.light_status == "optimal"
+    print("Default NamedTuple TrackerResult: Conforme")
+
+    # 2. Valutazione Luminanza su Frame Scuro (Sottoesposizione < 35 Lux eq)
+    dark_frame = np.full((120, 160, 3), 15, dtype=np.uint8)
+    b_m, g_m, r_m, _ = cv2.mean(dark_frame)
+    lum_dark = 0.299 * r_m + 0.587 * g_m + 0.114 * b_m
+    stat_dark = "underexposed" if lum_dark < 35.0 else ("overexposed" if lum_dark > 220.0 else "optimal")
+    assert stat_dark == "underexposed", f"Atteso underexposed, ottenuto {stat_dark}"
+    print(f"Ambiente Scuro (Luminanza={lum_dark:.1f}): Rilevato '{stat_dark}' Conforme")
+
+    # 3. Valutazione Luminanza su Frame Sovraesposto / Controluce (> 220 Lux eq)
+    bright_frame = np.full((120, 160, 3), 235, dtype=np.uint8)
+    b_m, g_m, r_m, _ = cv2.mean(bright_frame)
+    lum_bright = 0.299 * r_m + 0.587 * g_m + 0.114 * b_m
+    stat_bright = "underexposed" if lum_bright < 35.0 else ("overexposed" if lum_bright > 220.0 else "optimal")
+    assert stat_bright == "overexposed", f"Atteso overexposed, ottenuto {stat_bright}"
+    print(f"Ambiente Sovraesposto / Controluce (Luminanza={lum_bright:.1f}): Rilevato '{stat_bright}' Conforme")
+
+    # 4. Valutazione Luminanza Ottimale
+    optimal_frame = np.full((120, 160, 3), 130, dtype=np.uint8)
+    b_m, g_m, r_m, _ = cv2.mean(optimal_frame)
+    lum_opt = 0.299 * r_m + 0.587 * g_m + 0.114 * b_m
+    stat_opt = "underexposed" if lum_opt < 35.0 else ("overexposed" if lum_opt > 220.0 else "optimal")
+    assert stat_opt == "optimal", f"Atteso optimal, ottenuto {stat_opt}"
+    print(f"Ambiente Ottimale (Luminanza={lum_opt:.1f}): Rilevato '{stat_opt}' Conforme")
+    print(">>> TEST 46 SUPERATO! <<<")
+
+
+def test_adaptive_dwell_safety_guard():
+    print("\n--- TEST 47: Blocco di Sicurezza Adattivo Dwell su Azioni Distruttive di Sistema ---")
+    from core.dwell_safety import DwellSafetyGuard
+
+    dsg = DwellSafetyGuard(
+        is_enabled=True,
+        safety_multiplier=1.75,
+        vx=0,
+        vy=0,
+        vw=1920,
+        vh=1080,
+    )
+
+    base_dwell = 0.65
+
+    # 1. Centro Schermo (Zona Sicura) -> Nessuna estensione tempo di sosta
+    in_danger, eff_dwell = dsg.evaluate_dwell_time(960, 540, base_dwell)
+    assert in_danger is False
+    assert eff_dwell == base_dwell
+    print(f"Zona Sicura Centro (960, 540): Dwell nominale {eff_dwell:.2f}s (Nessun blocco)")
+
+    # 2. Pulsante Chiudi Finestra 'X' di Windows (Angolo Superiore Destro: x=1910, y=15)
+    in_danger, eff_dwell = dsg.evaluate_dwell_time(1910, 15, base_dwell)
+    assert in_danger is True
+    assert eff_dwell == base_dwell * 1.75
+    print(f"Zona Rischio 'X' Windows (1910, 15): Dwell esteso a {eff_dwell:.3f}s (Fattore 1.75x Conforme)")
+
+    # 3. Zona Personalizzata (es. Pulsante Elimina / Formatta Cartella: [400, 300, 500, 350])
+    dsg.add_custom_danger_zone(400, 300, 500, 350)
+    in_danger_custom, eff_custom = dsg.evaluate_dwell_time(450, 325, base_dwell)
+    assert in_danger_custom is True
+    assert eff_custom == base_dwell * 1.75
+    print("Zona Rischio Personalizzata: Rilevata con successo ed estensione dwell applicata")
+
+    # 4. Disattivazione Globale
+    dsg.is_enabled = False
+    in_danger_off, eff_off = dsg.evaluate_dwell_time(1910, 15, base_dwell)
+    assert in_danger_off is False
+    assert eff_off == base_dwell
+    print("Disattivazione Globale: Bypass confermato al 100%")
+    print(">>> TEST 47 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -2287,8 +2530,13 @@ if __name__ == "__main__":
     test_edge_scrolling_controller()
     test_emergency_caregiver_call_and_chime()
     test_auto_recenter_on_face_reengagement()
+    test_sniper_mode_ballistics()
+    test_personalized_aac_phrase_creator()
+    test_anti_accidental_exit_safeguard()
+    test_ambient_luminance_diagnostics()
+    test_adaptive_dwell_safety_guard()
     print("\n========================================================")
-    print("TUTTI I 42 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 47 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

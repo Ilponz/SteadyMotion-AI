@@ -40,6 +40,9 @@ class TrackerResult(NamedTuple):
     # Offset micro-sguardo dell'iride
     iris_dx: float
     iris_dy: float
+    # Diagnostica Illuminazione Ambientale
+    light_mean: float = 128.0
+    light_status: str = "optimal" 
 
 
 class FaceTrackerEngine:
@@ -161,6 +164,11 @@ class FaceTrackerEngine:
 
         result = self.detector.detect_for_video(mp_image, timestamp_ms)
 
+        # Diagnostica Illuminazione Ambientale (Zero-Heap cv2.mean)
+        b_m, g_m, r_m, _ = cv2.mean(frame_bgr)
+        lum = 0.299 * r_m + 0.587 * g_m + 0.114 * b_m
+        light_stat = "underexposed" if lum < 35.0 else ("overexposed" if lum > 220.0 else "optimal")
+
         if not result.face_landmarks or len(result.face_landmarks) == 0:
             return TrackerResult(
                 face_detected=False,
@@ -176,6 +184,8 @@ class FaceTrackerEngine:
                 brow_down_score=0.0,
                 iris_dx=0.0,
                 iris_dy=0.0,
+                light_mean=float(lum),
+                light_status=light_stat,
             )
 
         landmarks = result.face_landmarks[0]
@@ -315,4 +325,6 @@ class FaceTrackerEngine:
             brow_down_score=brow_down,
             iris_dx=iris_dx,
             iris_dy=iris_dy,
+            light_mean=float(lum),
+            light_status=light_stat,
         )

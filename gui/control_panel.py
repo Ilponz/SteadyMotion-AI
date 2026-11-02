@@ -595,6 +595,17 @@ class ControlPanel:
         self._create_slider_row(card_pt, "Guadagno Movimento Head", self.gain_val, 1.0, 6.0, "gain", "{:.2f}")
         self._create_slider_row(card_pt, "Deadzone Anti-Tremore (px)", self.deadzone_val, 0.5, 6.0, "deadzone", "{:.1f} px")
 
+        self.sniper_mode_enabled = tk.BooleanVar(value=True)
+        sw_sniper = ctk.CTkSwitch(
+            card_pt,
+            text="Modalità Cecchino / Sniper Mode (Decelerazione micro-bersagli 16x16 px)",
+            variable=self.sniper_mode_enabled,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            command=lambda: self.on_param_change("ballistics_sniper", self.sniper_mode_enabled.get()),
+            progress_color="#0284c7",
+        )
+        sw_sniper.pack(anchor="w", padx=10, pady=3)
+
         # Card Calibrazione Asimmetrica ROM (5 Punti)
         card_rom = ctk.CTkFrame(self.tab_controls, corner_radius=10, fg_color=("#f1f5f9", "#1e293b"))
         card_rom.pack(fill="x", pady=3, padx=6)
@@ -659,6 +670,17 @@ class ControlPanel:
         )
         switch_dwell.pack(anchor="w", padx=10, pady=3)
         self._create_slider_row(card_dwell, "Tempo di Sosta per Clic", self.dwell_time_val, 0.35, 1.50, "dwell_time", "{:.2f} s")
+
+        self.dwell_safety_enabled = tk.BooleanVar(value=True)
+        sw_safety = ctk.CTkSwitch(
+            card_dwell,
+            text="Protezione Anti-Chiusura Finestre (Dwell Safety Lock su pulsanti 'X')",
+            variable=self.dwell_safety_enabled,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            command=lambda: self.on_param_change("dwell_safety_enabled", self.dwell_safety_enabled.get()),
+            progress_color="#10b981",
+        )
+        sw_safety.pack(anchor="w", padx=10, pady=3)
 
         card_snap = ctk.CTkFrame(self.tab_controls, corner_radius=10)
         card_snap.pack(fill="x", pady=3, padx=6)

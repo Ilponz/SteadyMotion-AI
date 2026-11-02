@@ -26,6 +26,7 @@ from core.license_manager import LicenseManager
 from core.copilot import CaregiverCoPilot
 from core.dsp_filter import PointFilter2D
 from core.dwell_clicker import DwellClicker
+from core.dwell_safety import DwellSafetyGuard
 from core.edge_scrolling import EdgeScrollController
 from core.ergonomics import ErgonomicsMonitor
 from core.audio_feedback import AudioFeedback
@@ -93,6 +94,15 @@ class SteadyMotionApp:
             progress_callback=self._on_dwell_progress,
             spasm_callback=self._on_spasm_shock,
         )
+        self._base_dwell_time: float = self.dwell_clicker.dwell_time
+        self.dwell_safety = DwellSafetyGuard(
+            is_enabled=True,
+            safety_multiplier=1.75,
+            vx=self.mouse.vx,
+            vy=self.mouse.vy,
+            vw=self.mouse.vw,
+            vh=self.mouse.vh,
+        )
 
         # Trigger Acustico Ausiliario (Microfono Webcam)
         self.acoustic = AcousticTrigger(
@@ -110,7 +120,7 @@ class SteadyMotionApp:
         self.ergonomics_monitor = ErgonomicsMonitor()
 
         # Funzione di Trasferimento Balistica Non-Lineare (Fitts's Law gamma=1.25)
-        self.ballistics = BallisticTransfer(gamma=1.25, is_enabled=True)
+        self.ballistics = BallisticTransfer(gamma=1.25, is_enabled=True, sniper_mode=True)
 
         # Caregiver Co-Pilot (Arbitraggio Mouse Fisico USB)
         self.copilot = CaregiverCoPilot(
@@ -374,7 +384,10 @@ class SteadyMotionApp:
             if not self.dwell_clicker.is_enabled:
                 self.hud.hide()
         elif param_name == "dwell_time":
+            self._base_dwell_time = float(value)
             self.dwell_clicker.dwell_time = float(value)
+        elif param_name == "dwell_safety_enabled":
+            self.dwell_safety.is_enabled = bool(value)
         elif param_name == "acoustic_enabled":
             self.acoustic.update_params(enabled=bool(value), threshold=self.acoustic.threshold)
         elif param_name == "acoustic_threshold":
@@ -384,9 +397,11 @@ class SteadyMotionApp:
         elif param_name == "soundpack":
             self.audio_feedback.set_soundpack(str(value))
         elif param_name == "gamma":
-            self.ballistics.update_params(gamma=float(value), is_enabled=self.ballistics.is_enabled)
+            self.ballistics.update_params(gamma=float(value), is_enabled=self.ballistics.is_enabled, sniper_mode=self.ballistics.sniper_mode)
         elif param_name == "ballistics_enabled":
-            self.ballistics.update_params(gamma=self.ballistics.gamma, is_enabled=bool(value))
+            self.ballistics.update_params(gamma=self.ballistics.gamma, is_enabled=bool(value), sniper_mode=self.ballistics.sniper_mode)
+        elif param_name == "ballistics_sniper":
+            self.ballistics.update_params(gamma=self.ballistics.gamma, is_enabled=self.ballistics.is_enabled, sniper_mode=bool(value))
         elif param_name == "copilot_enabled":
             self.copilot.is_enabled = bool(value)
         elif param_name == "hud_theme":
@@ -572,7 +587,7 @@ class SteadyMotionApp:
 
                 if not self.is_paused:
                     norm_x, norm_y = self.ballistics.compute_normalized_xy(
-                        raw_x, raw_y, self.gain_x_left, self.gain_x_right, self.gain_y_up, self.gain_y_down
+                        raw_x, raw_y, self.gain_x_left, self.gain_x_right, self.gain_y_up, self.gain_y_down, now=t_now
                     )
 
                     target_px = self.mouse.vx + norm_x * self.mouse.vw
@@ -605,6 +620,10 @@ class SteadyMotionApp:
                             self.dwell_clicker.cancel()
                             self.hud.hide()
                         else:
+                            # Valutazione Sicurezza Dwell su Aree Critiche
+                            _, eff_dwell = self.dwell_safety.evaluate_dwell_time(snap_x, snap_y, self._base_dwell_time)
+                            if self.dwell_clicker.dwell_time != eff_dwell:
+                                self.dwell_clicker.dwell_time = eff_dwell
                             self.dwell_clicker.update(snap_x, snap_y, t_now)
 
                 with self.telemetry_lock:
@@ -696,7 +715,7 @@ class SteadyMotionApp:
                 # Iniezione mouse e Clic a sosta eseguiti SOLO se armato (non in pausa)
                 if face_detected and not is_blinking and not self.is_paused:
                     norm_x, norm_y = self.ballistics.compute_normalized_xy(
-                        raw_x, raw_y, self.gain_x_left, self.gain_x_right, self.gain_y_up, self.gain_y_down
+                        raw_x, raw_y, self.gain_x_left, self.gain_x_right, self.gain_y_up, self.gain_y_down, now=t_now
                     )
 
                     target_px = self.mouse.vx + norm_x * self.mouse.vw
@@ -711,7 +730,25 @@ class SteadyMotionApp:
                         self.mouse.move_to_pixel(snap_x, snap_y)
                         self.copilot.record_injection(snap_x, snap_y)
                         self.clinical_logger.record_cursor_movement(snap_x, snap_y)
-                        self.dwell_clicker.update(snap_x, snap_y, t_now)
+
+                        # Gestione Scorrimento Continuo ai Bordi (Edge Scrolling)
+                        mon_top, mon_bottom = self.mouse.vy, self.mouse.vy + self.mouse.vh
+                        is_edge_scrolling = self.edge_scrolling.update(
+                            cursor_y=snap_y,
+                            monitor_top=mon_top,
+                            monitor_bottom=mon_bottom,
+                            now=t_now,
+                        )
+
+                        if is_edge_scrolling:
+                            self.dwell_clicker.cancel()
+                            self.hud.hide()
+                        else:
+                            # Valutazione Sicurezza Dwell su Aree Critiche
+                            _, eff_dwell = self.dwell_safety.evaluate_dwell_time(snap_x, snap_y, self._base_dwell_time)
+                            if self.dwell_clicker.dwell_time != eff_dwell:
+                                self.dwell_clicker.dwell_time = eff_dwell
+                            self.dwell_clicker.update(snap_x, snap_y, t_now)
 
             with self.telemetry_lock:
                 self.shared_fps = self.camera.actual_fps if self.camera.actual_fps > 0 else loop_fps
@@ -782,8 +819,29 @@ class SteadyMotionApp:
 
         self.root.after(33, self._gui_update_loop)
 
-    def on_close(self):
-        """Spegnimento pulito e rilascio delle risorse."""
+    def on_close(self, confirm: bool = True):
+        """
+        Spegnimento pulito e rilascio delle risorse con salvaguardia anti-chiusura accidentale.
+        Se l'utente o il caregiver preme accidentalmente la 'X' della finestra,
+        viene offerta la scelta di minimizzare mantenendo il controllo attivo,
+        oppure di uscire definitivamente.
+        """
+        if confirm and not self.force_demo:
+            try:
+                from tkinter import messagebox
+                res = messagebox.askyesno(
+                    "SteadyMotion AI - Conferma Uscita",
+                    "SteadyMotion AI è attualmente in esecuzione con controllo del cursore attivo.\n\n"
+                    "Vuoi davvero chiudere definitivamente il software?\n\n"
+                    "• Premi 'SÌ' per arrestare il tracciamento e chiudere l'applicazione.\n"
+                    "• Premi 'NO' per minimizzare la finestra e continuare a usare il puntatore.",
+                )
+                if not res:
+                    self.root.iconify()
+                    return
+            except Exception:
+                pass
+
         self.is_running = False
         if self.tracking_thread and self.tracking_thread.is_alive():
             self.tracking_thread.join(timeout=1.0)
