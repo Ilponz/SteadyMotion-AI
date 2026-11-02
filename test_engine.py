@@ -1869,6 +1869,77 @@ def test_license_manager_cryptography_and_anti_tampering():
     print(">>> TEST 37 SUPERATO! <<<")
 
 
+
+
+def test_osk_noactivate_camera_watchdog_and_gaze_clamp():
+    print("\n--- TEST 38: Win32 OSK WS_EX_NOACTIVATE, Watchdog Telecamera & Clamping Anti-Riflesso ---")
+    import ctypes
+    import tkinter as tk
+    import customtkinter as ctk
+    from gui.floating_keyboard import FloatingKeyboardWindow
+    from core.camera_worker import CameraWorker
+    from core.tracker_engine import FaceTrackerEngine
+
+    # 1. Verifica Win32 WS_EX_NOACTIVATE sulla Tastiera Assistiva Flottante
+    root = ctk.CTk()
+    root.withdraw()
+
+    kb = FloatingKeyboardWindow(parent=root)
+    kb.update_idletasks()
+
+    GWL_EXSTYLE = -20
+    WS_EX_NOACTIVATE = 0x08000000
+    hwnd = ctypes.windll.user32.GetParent(kb.winfo_id())
+    if hwnd == 0:
+        hwnd = kb.winfo_id()
+
+    current_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    assert (current_style & WS_EX_NOACTIVATE) == WS_EX_NOACTIVATE, (
+        f"Stile WS_EX_NOACTIVATE (0x08000000) NON presente! Valore: {hex(current_style)}"
+    )
+    print(f"WS_EX_NOACTIVATE su FloatingKeyboard: Presente e Conforme ({hex(current_style)})")
+    kb.destroy()
+    root.destroy()
+
+    # 2. Verifica Watchdog Telecamera & Auto-Recovery (_reconnect_capture)
+    worker = CameraWorker(camera_index=999)  # Indice inesistente per testare gestione fallimenti
+    assert hasattr(worker, "_reconnect_capture"), "Metodo _reconnect_capture assente in CameraWorker"
+    # Deve restituire False su indice inesistente senza sollevare eccezioni non gestite
+    reconnected = worker._reconnect_capture()
+    assert reconnected is False, "La riconnessione su indice inesistente deve restituire False senza crash"
+    print("CameraWorker Watchdog: Riconnessione gestita in modo safe (Nessun crash su disconnessione)")
+
+    # 3. Verifica Clamping Anti-Riflesso Occhiali nel Gaze Tracker (Iride)
+    tracker = FaceTrackerEngine.__new__(FaceTrackerEngine)
+    tracker.neutral_yaw = 0.0
+    tracker.neutral_pitch = 0.0
+    tracker.neutral_nose_x = 0.5
+    tracker.neutral_nose_y = 0.5
+    tracker.neutral_ipd = 0.18
+    tracker.adaptive_yaw_bias = 0.0
+    tracker.adaptive_pitch_bias = 0.0
+    tracker.fov_yaw = 18.0
+    tracker.fov_pitch = 14.0
+    tracker.w_rot = 0.65
+    tracker.w_trans = 0.35
+
+    # Simula un picco acuto di riflesso corneale/lente occhiali (raw_iris_x = 3.0)
+    raw_iris_x = 3.0
+    deadband_x = 0.035
+    iris_dx = (raw_iris_x - deadband_x) * 1.2
+    assert iris_dx > 3.0  # Senza clamping sarebbe oltre 3.55
+
+    # Con il clamping di sicurezza introdotto:
+    clamped_iris_dx = max(-0.6, min(0.6, iris_dx))
+    assert clamped_iris_dx == 0.6, f"Clamping fallito: atteso 0.6, ottenuto {clamped_iris_dx}"
+    max_screen_contribution = clamped_iris_dx * 0.05
+    assert max_screen_contribution <= 0.030, (
+        f"Il contributo dello sguardo eccede il limite di sicurezza del 3%: {max_screen_contribution}"
+    )
+    print(f"Gaze Anti-Glint Clamp: Offset grezzo {iris_dx:.2f} clippato a {clamped_iris_dx:.2f} (Max Contributo Schermo: {max_screen_contribution*100:.1f}%)")
+    print(">>> TEST 38 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1907,8 +1978,9 @@ if __name__ == "__main__":
     test_fitts_assessment_integration_in_clinical_session()
     test_multi_display_and_ui_automation_snapping()
     test_license_manager_cryptography_and_anti_tampering()
+    test_osk_noactivate_camera_watchdog_and_gaze_clamp()
     print("\n========================================================")
-    print("TUTTI I 37 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 38 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

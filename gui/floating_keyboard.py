@@ -58,8 +58,29 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         self._build_ui()
         self.typed_text.trace_add("write", lambda *args: self._update_suggestions())
         self._update_suggestions()
+        self._apply_noactivate_style()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _apply_noactivate_style(self):
+        """
+        Applica lo stile Win32 WS_EX_NOACTIVATE alla finestra della tastiera.
+        Impedisce categoricamente a Windows di rubare il focus all'applicazione sottostante
+        (Notepad, Microsoft Word, Browser, Chat) quando l'utente clicca o effettua il Dwell
+        sui tasti o sui suggerimenti predittivi.
+        """
+        try:
+            import ctypes
+            self.update_idletasks()
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            if hwnd == 0:
+                hwnd = self.winfo_id()
+            GWL_EXSTYLE = -20
+            WS_EX_NOACTIVATE = 0x08000000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE)
+        except Exception:
+            pass
 
     def _build_ui(self):
         # 1. Barra Superiore di Controllo

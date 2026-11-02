@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **35 su 35 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **38 su 38 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -55,6 +55,7 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Esposizione Fall-Safe:** Valore nominale 0.75 per prevenire frame neri o cali improvvisi a 30 FPS.
 - [x] **Triple Buffering Circolare Atomico:** Sincronizzazione hardware 	hreading.Event protetta da lock a zero latenza e zero frame persi.
 - [x] **Hot-Swap & Probing a Caldo:** Sonda rapida degli indici hardware e commutazione a runtime senza riavvio.
+- [x] **Watchdog Resiliente & S3/S0ix Sleep Auto-Recovery:** Watchdog con auto-ripristino del driver a caldo dopo 40 cicli di mancata lettura, azzerando i blocchi causati da sospensione del laptop o micro-disconnessioni del cavo USB.
 
 ### 2. Biometria 6-DoF & Gaze Engine (core/tracker_engine.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero-Copy RGB Buffer:** cv2.cvtColor usa dst=self._rgb_buffer pre-allocato (zero heap churn).
@@ -62,6 +63,7 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Gaze 2D Iride:** Micro-correzione vettoriale sia su asse X che Y integrata nella fusione 6-DoF.
 - [x] **Decomposizione SO(3) Zero-Heap:** Calcolo Euler (Yaw, Pitch, Roll) direttamente su sequenza C a 16 elementi senza allocare array NumPy per fotogramma, con protezione singolarità Gimbal-Lock (sy < 1e-6).
 - [x] **Scansione Blendshapes FACS Zero-Heap:** Sostituito il dizionario da 52 chiavi con scansione diretta O(N) dei soli 7 parametri attivi.
+- [x] **Gaze Anti-Glint & Eyeglasses Glare Clamping [-0.6, 0.6]:** Bounding rigido della correzione dell'iride al 3% dello schermo, prevenendo scatti anomali causati da riflessi corneali o lenti degli occhiali.
 - [x] **Profiling Inferenza XNNPACK Sub-10ms (6.10 ms / 163.8 FPS):** Audit formale DirectML vs XNNPACK. Dimostrato che il delegato CPU XNNPACK residente in L2/L3 cache azzera l'overhead di copia bus PCIe/GPU ed elimina i crash da device loss D3D12, garantendo oltre 160 FPS su computer commerciali.
 
 ### 3. DSP One-Euro & Fisica della Traiettoria (core/dsp_filter.py) — [RISOLTO & OTTIMIZZATO]
@@ -90,6 +92,7 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Caregiver Co-Pilot WH_MOUSE_LL:** Hook kernel a basso livello che intercetta all\'istante (0 px delta) il tocco fisico del mouse USB attivando una pausa di cortesia di 2.0s senza lotta del cursore.
 - [x] **Trigger Ausiliari Multipli:** Trigger acustico anti-rumore (ZCR > 0.08) e trigger facciale FACS silenzioso con isteresi e debounce.
 - [x] **Comunicazione Aumentativa & KSR > 75%:** Tastiera flottante con modello Bigram Next-Word prediction e prontuario frasi cliniche AAC persistente.
+- [x] **Win32 WS_EX_NOACTIVATE su Tastiera Assistiva Flottante (0x08000000):** Rimozione assoluta del furto di focus (Focus Stealing Trap). L'utente può digitare o selezionare frasi mantenendo attivo il campo di testo di Microsoft Word, Chrome o Notepad senza conflitti di focus.
 - [x] **Clinical Asynchronous TTS Engine (core/tts_engine.py):** Worker Apartment COM STA nativo con auto-selezione voce italiana Microsoft Elsa, eliminazione radicale errori di marshalling STA (0x800401F0) e fallback PowerShell .NET.
 - [x] **Cartella Riabilitativa Digitale:** Modulo core/clinical_logger.py con odometria, conteggio spasmi e shock, KSR e generazione automatica di relazioni Markdown/JSON.
 - [x] **Monitor Ergonomico Closed-Loop & Zero Heap Churn (core/ergonomics.py):** Assorbimento bi-assiale (Pitch e Yaw) con iniezione del bias nella fusione 6-DoF del tracker engine, struttura ErgonomicsStatus pre-allocata in-place (0 byte/frame allocati) e notifica clinica edge-triggered che elimina il flooding a 60 Hz (1 evento per episodio sostenuto anziché 600).

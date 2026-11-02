@@ -151,14 +151,52 @@ class CameraWorker:
         self.thread.start()
         return True
 
+    def _reconnect_capture(self) -> bool:
+        """Tenta il ripristino a caldo della cattura in caso di disconnessione USB o sospensione OS (S3/Modern Standby)."""
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
+
+        time.sleep(0.15)
+        self.cap = self._init_capture(cv2.CAP_DSHOW)
+        if self.cap is None:
+            self.cap = self._init_capture(cv2.CAP_MSMF)
+            if self.cap is None:
+                self.cap = self._init_capture(cv2.CAP_ANY)
+                if self.cap is None:
+                    return False
+
+        try:
+            self.negotiated_fps = self.cap.get(cv2.CAP_PROP_FPS)
+        except Exception:
+            pass
+        return True
+
     def _capture_loop(self):
-        """Ciclo continuo di cattura hardware a zero allocazioni dinamiche."""
-        while self.is_running and self.cap is not None:
+        """Ciclo continuo di cattura hardware a zero allocazioni dinamiche con auto-recovery watchdog."""
+        consecutive_failures = 0
+        while self.is_running:
+            if self.cap is None or not self.cap.isOpened():
+                if not self._reconnect_capture():
+                    time.sleep(0.4)
+                    continue
+
             # Cattura diretta nel buffer pre-allocato (Zero Heap Churn)
             ret, _ = self.cap.read(image=self._raw_capture_buf)
             if not ret or self._raw_capture_buf is None:
-                time.sleep(0.001)
+                consecutive_failures += 1
+                if consecutive_failures >= 40:
+                    # Oltre 40 fallimenti consecutivi (~400 ms di freeze driver/sospensione PC)
+                    self._reconnect_capture()
+                    consecutive_failures = 0
+                else:
+                    time.sleep(0.01)
                 continue
+
+            consecutive_failures = 0
 
             t_now = time.perf_counter()
 

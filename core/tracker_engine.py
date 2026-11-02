@@ -283,6 +283,10 @@ class FaceTrackerEngine:
             else:
                 iris_dy = 0.0
 
+            # Clamping di sicurezza anti-abbagliamento occhiali e riflessi corneali anomali
+            iris_dx = max(-0.6, min(0.6, iris_dx))
+            iris_dy = max(-0.6, min(0.6, iris_dy))
+
         # 5. FUSIONE IBRIDA 6-DoF Normalizzata (Rotazione Angolare Rigida + Traslazione Fine Invariante Z)
         d_yaw = (yaw - self.neutral_yaw - self.adaptive_yaw_bias) / self.fov_yaw
         d_pitch = (pitch - self.neutral_pitch - self.adaptive_pitch_bias) / self.fov_pitch
