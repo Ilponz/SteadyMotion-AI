@@ -1705,6 +1705,87 @@ def test_fitts_assessment_integration_in_clinical_session():
     print(">>> TEST 35 SUPERATO! <<<")
 
 
+def test_multi_display_and_ui_automation_snapping():
+    print("\n--- TEST 36: Multi-Display Geometry, Dead-Zone Clamping & Asynchronous UI Automation ---")
+    from core.virtual_input import WindowsMouseController, DisplayMonitor
+    from core.magnetic_snapping import MagneticSnapper, AsyncUIAutomationScanner, MAX_SNAP_WIDTH, MAX_SNAP_HEIGHT, MAX_SNAP_AREA
+
+    # 1. Verifica Enumerazione Display Fisici Reali
+    mouse = WindowsMouseController()
+    monitors = mouse.get_display_monitors()
+    print(f"Monitor rilevati dal kernel Win32: {len(monitors)}")
+    assert len(monitors) >= 1, "Almeno un monitor deve essere rilevato"
+    primary_found = False
+    for m in monitors:
+        print(f"  Display: {m.device_name} | Rect: {m.rect} | Primary: {m.is_primary}")
+        assert m.width > 0 and m.height > 0
+        if m.is_primary:
+            primary_found = True
+    assert primary_found, "Il display primario deve essere contrassegnato con is_primary=True"
+
+    # 2. Verifica Identificazione Monitor da Coordinate (get_monitor_at)
+    m0 = monitors[0]
+    center_m0_x = (m0.left + m0.right) // 2
+    center_m0_y = (m0.top + m0.bottom) // 2
+    detected_m = mouse.get_monitor_at(center_m0_x, center_m0_y)
+    assert detected_m is not None and detected_m.hmonitor == m0.hmonitor
+    print(f"Riconoscimento Display per coordinate ({center_m0_x}, {center_m0_y}): {detected_m.device_name}")
+
+    # 3. Simulazione Multi-Monitor Asimmetrico con Dead-Zone (Vuoto Virtuale)
+    # Monitor 1: 1920x1080 at (0, 0)
+    # Monitor 2: 1920x1080 at (1920, 300) [offset in basso di 300 px]
+    # Dead zone: (2200, 50) -> regione compresa tra x in [1920, 3840] ma y < 300 dove non esiste monitor!
+    sim_m1 = DisplayMonitor(hmonitor=1, rect=(0, 0, 1920, 1080), work_rect=(0, 0, 1920, 1040), is_primary=True, device_name="SIM_DISP1")
+    sim_m2 = DisplayMonitor(hmonitor=2, rect=(1920, 300, 3840, 1380), work_rect=(1920, 300, 3840, 1340), is_primary=False, device_name="SIM_DISP2")
+    mouse.monitors = [sim_m1, sim_m2]
+
+    # Punto valido su Monitor 1
+    p1_x, p1_y = mouse.clamp_to_display(500, 500)
+    assert p1_x == 500.0 and p1_y == 500.0, "Punti all'interno di un display valido non devono essere alterati"
+
+    # Punto valido su Monitor 2
+    p2_x, p2_y = mouse.clamp_to_display(2500, 600)
+    assert p2_x == 2500.0 and p2_y == 600.0, "Punti validi su display secondario non devono essere alterati"
+
+    # Punto nella DEAD ZONE (2500, 50) -> deve essere proiettato sul bordo superiore di Monitor 2 (y=300)
+    dead_x, dead_y = mouse.clamp_to_display(2500, 50)
+    assert dead_x == 2500.0 and dead_y == 300.0, f"Atteso clamping a (2500, 300), ottenuto ({dead_x}, {dead_y})"
+    print(f"Anti-Trap Dead Zone: Punto (2500, 50) proiettato in sicurezza su display fisico a ({dead_x}, {dead_y})")
+
+    # Ripristino monitor reali
+    mouse.refresh_screen_metrics()
+
+    # 4. Verifica Scanner Asincrono UI Automation (COM IUIAutomation)
+    snapper = MagneticSnapper(snap_radius=36.0, gravity_factor=0.65, escape_velocity=280.0, enable_uia=True)
+    assert snapper._uia_scanner is not None, "Lo scanner asincrono UIA deve essere istanziato"
+    print(f"Scanner UI Automation Inizializzato (Thread: {snapper._uia_scanner._thread.is_alive()} | COM Available: {snapper._uia_scanner.is_available})")
+
+    # Iniezione target UIA simulato tramite lock sicuro
+    with snapper._uia_scanner._target_lock:
+        snapper._uia_scanner._latest_target = (300, 400, 380, 450, 340.0, 425.0)  # w=80, h=50, cx=340, cy=425
+
+    # 4.1 Test aggancio verso target UIA profondo
+    t_now = 500.0
+    snap_x, snap_y = snapper.apply_snap(345.0, 425.0, t_now)
+    assert snapper.is_snapped, "Il cursore deve agganciarsi al target UIA rilevato"
+    assert 340.0 < snap_x < 345.0, "Coordinata X attratta verso il centro UIA (340.0)"
+    assert snap_y == 425.0, "Coordinata Y perfettamente allineata al centro UIA"
+    print(f"Snapping su Elemento UI Automation: ({snap_x:.2f}, {snap_y:.2f}) -> Centro Target (340.0, 425.0) Confermato")
+
+    # 4.2 Invalida cache target quando il cursore esce dall'area di influenza
+    far_x, far_y = snapper.apply_snap(800.0, 800.0, t_now + 0.1)
+    assert not snapper.is_snapped, "Lontano dal target lo snapping non deve essere attivo"
+    assert snapper._uia_scanner.get_target(800.0, 800.0, 36.0) is None, "Il target UIA deve essere invalidato automaticamente"
+    print("Invalidazione Automatica Cache UIA su allontanamento: 100% Conforme")
+
+    # 4.3 Chiusura pulita dello scanner e liberazione dell'apartment COM
+    snapper.close()
+    assert snapper._uia_scanner is None, "Lo scanner deve essere rilasciato e il thread terminato"
+    print("Shutdown Pulito UI Automation Worker Thread & Apartment COM: 100% Rilasciato")
+
+    print(">>> TEST 36 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -1741,8 +1822,9 @@ if __name__ == "__main__":
     test_iso_9241_9_multi_directional_circle_and_effective_throughput()
     test_acoustic_trigger_noise_immunity_and_pop_detection()
     test_fitts_assessment_integration_in_clinical_session()
+    test_multi_display_and_ui_automation_snapping()
     print("\n========================================================")
-    print("TUTTI I 35 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 36 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

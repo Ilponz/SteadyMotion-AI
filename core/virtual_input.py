@@ -18,7 +18,8 @@ import ctypes
 from ctypes import wintypes
 import threading
 import time
-from typing import Tuple
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 # Costanti API Win32
 INPUT_MOUSE = 0
@@ -48,6 +49,102 @@ DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
 STEADYMOTION_INPUT_SIGNATURE = 0x53544541
 
 ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
+
+
+class MONITORINFOEX(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("rcMonitor", wintypes.RECT),
+        ("rcWork", wintypes.RECT),
+        ("dwFlags", wintypes.DWORD),
+        ("szDevice", wintypes.WCHAR * 32),
+    ]
+
+
+MonitorEnumProc = ctypes.WINFUNCTYPE(
+    wintypes.BOOL,
+    wintypes.HANDLE,
+    wintypes.HDC,
+    ctypes.POINTER(wintypes.RECT),
+    wintypes.LPARAM,
+)
+
+
+@dataclass
+class DisplayMonitor:
+    """Rappresentazione geometrica di un singolo display fisico."""
+    hmonitor: int
+    rect: Tuple[int, int, int, int]  # (left, top, right, bottom)
+    work_rect: Tuple[int, int, int, int]
+    is_primary: bool
+    device_name: str
+
+    @property
+    def left(self) -> int:
+        return self.rect[0]
+
+    @property
+    def top(self) -> int:
+        return self.rect[1]
+
+    @property
+    def right(self) -> int:
+        return self.rect[2]
+
+    @property
+    def bottom(self) -> int:
+        return self.rect[3]
+
+    @property
+    def width(self) -> int:
+        return self.rect[2] - self.rect[0]
+
+    @property
+    def height(self) -> int:
+        return self.rect[3] - self.rect[1]
+
+    def contains(self, x: float, y: float) -> bool:
+        """Determina se il punto (x, y) cade all'interno dei confini visibili del monitor."""
+        return self.left <= x < self.right and self.top <= y < self.bottom
+
+    def clamp(self, x: float, y: float) -> Tuple[float, float]:
+        """Blocca le coordinate entro il perimetro sicuro del display."""
+        cx = max(float(self.left), min(float(self.right - 1), float(x)))
+        cy = max(float(self.top), min(float(self.bottom - 1), float(y)))
+        return cx, cy
+
+    def distance_to(self, x: float, y: float) -> float:
+        """Distanza euclidea dal punto più vicino del rettangolo del monitor."""
+        dx = max(0.0, float(self.left) - x, x - float(self.right - 1))
+        dy = max(0.0, float(self.top) - y, y - float(self.bottom - 1))
+        return (dx * dx + dy * dy) ** 0.5
+
+
+def enumerate_monitors() -> List[DisplayMonitor]:
+    """Interroga l'API Win32 EnumDisplayMonitors per mappare tutti i monitor attivi."""
+    monitors: List[DisplayMonitor] = []
+
+    def _enum_proc(hmon, hdc, lprect, lparam):
+        info = MONITORINFOEX()
+        info.cbSize = ctypes.sizeof(MONITORINFOEX)
+        if user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
+            m = info.rcMonitor
+            w = info.rcWork
+            monitors.append(DisplayMonitor(
+                hmonitor=int(hmon or 0),
+                rect=(m.left, m.top, m.right, m.bottom),
+                work_rect=(w.left, w.top, w.right, w.bottom),
+                is_primary=bool(info.dwFlags & 1),
+                device_name=str(info.szDevice),
+            ))
+        return True
+
+    cb = MonitorEnumProc(_enum_proc)
+    try:
+        user32.EnumDisplayMonitors(None, None, cb, 0)
+    except Exception:
+        pass
+    return monitors
 
 
 class MOUSEINPUT(ctypes.Structure):
@@ -146,6 +243,7 @@ class WindowsMouseController:
     def __init__(self):
         enable_high_precision_timer()
         self.signature_extra = ULONG_PTR(STEADYMOTION_INPUT_SIGNATURE)
+        self.monitors: List[DisplayMonitor] = []
         self.refresh_screen_metrics()
         self.is_dragging = False
 
@@ -160,7 +258,7 @@ class WindowsMouseController:
         disable_high_precision_timer()
 
     def refresh_screen_metrics(self):
-        """Calcola l'estensione dell'intero desktop virtuale su monitor singolo o multiplo."""
+        """Calcola l'estensione dell'intero desktop virtuale e mappa la geometria dei monitor attivi."""
         self.vx = float(user32.GetSystemMetrics(SM_XVIRTUALSCREEN))
         self.vy = float(user32.GetSystemMetrics(SM_YVIRTUALSCREEN))
         self.vw = float(user32.GetSystemMetrics(SM_CXVIRTUALSCREEN))
@@ -172,10 +270,12 @@ class WindowsMouseController:
             self.vw = float(user32.GetSystemMetrics(SM_CXSCREEN))
             self.vh = float(user32.GetSystemMetrics(SM_CYSCREEN))
 
+        self.monitors = enumerate_monitors()
+
     def check_screen_metrics_changed(self) -> bool:
         """
         Verifica se la topologia o risoluzione del display è cambiata a caldo (hotplug HDMI / scaling).
-        Se rileva variazioni, sincronizza automaticamente le coordinate virtuali.
+        Se rileva variazioni, sincronizza automaticamente le coordinate virtuali e la lista dei display.
         """
         cur_vx = float(user32.GetSystemMetrics(SM_XVIRTUALSCREEN))
         cur_vy = float(user32.GetSystemMetrics(SM_YVIRTUALSCREEN))
@@ -194,17 +294,46 @@ class WindowsMouseController:
             self.vy = cur_vy
             self.vw = cur_vw
             self.vh = cur_vh
+            self.monitors = enumerate_monitors()
             return True
         return False
+
+    def get_display_monitors(self) -> List[DisplayMonitor]:
+        """Restituisce l'elenco dei display monitor attivi mappati."""
+        return list(self.monitors)
+
+    def get_monitor_at(self, x: float, y: float) -> Optional[DisplayMonitor]:
+        """Individua il monitor fisico contenente le coordinate specificate."""
+        for m in self.monitors:
+            if m.contains(x, y):
+                return m
+        return None
+
+    def clamp_to_display(self, x: float, y: float) -> Tuple[float, float]:
+        """
+        Blocca le coordinate all'interno della superficie visibile dei monitor attivi.
+        Se il cursore si trova in una 'dead zone' (vuoto virtuale tra schermi di altezze diverse),
+        proietta il cursore sul perimetro del monitor più vicino, impedendone la scomparsa.
+        """
+        if self.monitors:
+            for m in self.monitors:
+                if m.contains(x, y):
+                    return float(x), float(y)
+            closest = min(self.monitors, key=lambda m: m.distance_to(x, y))
+            return closest.clamp(x, y)
+
+        # Fallback desktop virtuale standard
+        clamped_x = max(self.vx, min(self.vx + self.vw - 1.0, float(x)))
+        clamped_y = max(self.vy, min(self.vy + self.vh - 1.0, float(y)))
+        return clamped_x, clamped_y
 
     def move_to_pixel(self, x: float, y: float):
         """
         Muove il cursore preservando le coordinate frazionarie sub-pixel.
         Esegue la mutazione diretta in memoria C senza alcuna allocazione heap in Python.
-        Garantisce reachability 100% fino all'ultimo pixel di bordo (0 e 65535).
+        Garantisce reachability 100% fino all'ultimo pixel di bordo (0 e 65535) e protezione dead-zone.
         """
-        clamped_x = max(self.vx, min(self.vx + self.vw - 1.0, float(x)))
-        clamped_y = max(self.vy, min(self.vy + self.vh - 1.0, float(y)))
+        clamped_x, clamped_y = self.clamp_to_display(x, y)
 
         # Calcolo normalizzato sub-pixel a 16-bit su span effettivo (vw - 1, vh - 1)
         span_w = max(1.0, self.vw - 1.0)

@@ -694,6 +694,7 @@ class SteadyMotionApp:
             self.mouse.mouse_up("left")
         disable_high_precision_timer()
         self.copilot.stop_hook()
+        self.magnetic_snapper.close()
         self.audio_feedback.stop()
         self.camera.stop()
         self.acoustic.stop()

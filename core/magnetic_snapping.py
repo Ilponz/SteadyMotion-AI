@@ -8,8 +8,8 @@ patologie neurodegenerative (SLA, Parkinson severo, tetraparesi spastica).
 
 Principio di Funzionamento:
 1. Quando il cursore filtrato si avvicina al baricentro di un elemento interattivo (pulsante GUI,
-   link, checkbox, icona della palette), il sistema esercita un'attrazione gravitazionale dolce
-   verso il centro del target.
+   link, checkbox, icona della palette, controlli web/Electron), il sistema esercita un'attrazione
+   gravitazionale dolce verso il centro del target.
 2. Questo stabilizza enormemente il cursore durante la fase di Dwell (clic a sosta), impedendo
    che micro-scatti involontari o tremori periferici facciano uscire il cursore dal pulsante.
 3. Velocità di Fuga (Breakout Velocity): Se l'utente esegue un movimento volontario rapido
@@ -17,19 +17,21 @@ Principio di Funzionamento:
    al cursore di scivolare via senza alcuna sensazione di "blocco" o "viscosità fastidiosa".
 4. Continuità C^1: La transizione di attrazione decresce quadraticamente a zero alla periferia del raggio
    e si azzera esattamente al centro (d=0 -> correzione = 0.000000 px).
-5. Zero Heap Churn: Le strutture native Win32 (POINT, RECT) sono preallocate staticamente in memoria C.
-   Le interrogazioni a WindowFromPoint vengono memorizzate nella cache del rettangolo attivo per evitare
-   chiamate kernel superflue a 60-120 Hz.
+5. Zero Heap Churn & Decoupled UIA: Le strutture native Win32 (POINT, RECT) sono preallocate
+   staticamente in memoria C. L'ispezione avanzata Microsoft UI Automation (COM IUIAutomation) opera
+   su un thread worker asincrono in background per non bloccare mai il loop a 60-120 Hz della camera.
 """
 
 import ctypes
 from ctypes import wintypes
 from dataclasses import dataclass
 import math
+import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
 user32 = ctypes.windll.user32
+ole32 = ctypes.oledll.ole32
 
 # Definizione tipi Win32 x64 sicuri
 user32.WindowFromPoint.argtypes = [wintypes.POINT]
@@ -38,6 +40,79 @@ user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
 user32.GetWindowRect.restype = wintypes.BOOL
 user32.IsWindowVisible.argtypes = [wintypes.HWND]
 user32.IsWindowVisible.restype = wintypes.BOOL
+
+
+# ==============================================================================
+# Definizione Strutture e Vtable COM per Microsoft UI Automation (ctypes nativo)
+# ==============================================================================
+
+class GUID(ctypes.Structure):
+    _fields_ = [
+        ("Data1", ctypes.c_ulong),
+        ("Data2", ctypes.c_ushort),
+        ("Data3", ctypes.c_ushort),
+        ("Data4", ctypes.c_ubyte * 8)
+    ]
+
+    @classmethod
+    def from_str(cls, s: str) -> "GUID":
+        s = s.strip("{}")
+        parts = s.split("-")
+        d1 = int(parts[0], 16)
+        d2 = int(parts[1], 16)
+        d3 = int(parts[2], 16)
+        d4_bytes = bytes.fromhex(parts[3] + parts[4])
+        d4 = (ctypes.c_ubyte * 8)(*d4_bytes)
+        return cls(d1, d2, d3, d4)
+
+
+class POINT_VAL(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+# Prototipi funzioni COM
+proto_ElementFromPoint = ctypes.WINFUNCTYPE(
+    ctypes.c_long, ctypes.c_void_p, POINT_VAL, ctypes.POINTER(ctypes.c_void_p)
+)
+proto_GetBoundingRect = ctypes.WINFUNCTYPE(
+    ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(wintypes.RECT)
+)
+proto_GetControlType = ctypes.WINFUNCTYPE(
+    ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(ctypes.c_long)
+)
+proto_Release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)
+
+# CLSID CUIAutomation: {FF48DBA4-60EF-4201-AA87-54103EEF594E}
+# IID IUIAutomation:   {30CBE57D-D9D0-452A-AB13-7AC5AC4825EE}
+CLSID_CUIAutomation = GUID.from_str("{FF48DBA4-60EF-4201-AA87-54103EEF594E}")
+IID_IUIAutomation = GUID.from_str("{30CBE57D-D9D0-452A-AB13-7AC5AC4825EE}")
+
+# UIA Control Types interattivi prioritari per lo snapping
+INTERACTIVE_CONTROL_TYPES = {
+    50000,  # Button
+    50002,  # CheckBox
+    50003,  # ComboBox
+    50004,  # Edit
+    50005,  # Hyperlink
+    50006,  # Image
+    50007,  # ListItem
+    50011,  # MenuItem
+    50013,  # RadioButton
+    50015,  # Slider
+    50019,  # TabItem
+    50024,  # TreeItem
+    50025,  # Custom
+    50031,  # SplitButton
+    50035,  # HeaderItem
+}
+
+
+# Costanti per il filtraggio dimensionale dei bersagli Win32 (Anti-Giant Container Trap)
+# Prevengono l'attrazione spuria verso pannelli generici, canvas, finestre intere o WebViews.
+MAX_SNAP_WIDTH = 480
+MAX_SNAP_HEIGHT = 220
+MAX_SNAP_AREA = 75000
+MIN_SNAP_DIM = 8
 
 
 @dataclass
@@ -73,18 +148,177 @@ class MagneticTarget:
         return math.hypot(x - self.center_x, y - self.center_y)
 
 
-# Costanti per il filtraggio dimensionale dei bersagli Win32 (Anti-Giant Container Trap)
-# Prevengono l'attrazione spuria verso pannelli generici, canvas, finestre intere o WebViews.
-MAX_SNAP_WIDTH = 480
-MAX_SNAP_HEIGHT = 220
-MAX_SNAP_AREA = 75000
-MIN_SNAP_DIM = 8
+class AsyncUIAutomationScanner:
+    """
+    Scanner asincrono in background per Microsoft UI Automation (COM STA).
+    Ispeziona i controlli interni di Chrome, Edge, Firefox ed Electron senza mai bloccare
+    il Core Loop di tracciamento a 60-120 Hz.
+    """
+
+    def __init__(
+        self,
+        max_w: int = MAX_SNAP_WIDTH,
+        max_h: int = MAX_SNAP_HEIGHT,
+        max_area: int = MAX_SNAP_AREA,
+        min_dim: int = MIN_SNAP_DIM,
+    ):
+        self.max_w = max_w
+        self.max_h = max_h
+        self.max_area = max_area
+        self.min_dim = min_dim
+
+        self._req_x: int = 0
+        self._req_y: int = 0
+        self._has_request: bool = False
+        self._last_req_time: float = 0.0
+        self._running: bool = True
+
+        self._lock = threading.Lock()
+        self._cv = threading.Condition(self._lock)
+
+        self._latest_target: Optional[Tuple[int, int, int, int, float, float]] = None
+        self._target_lock = threading.Lock()
+        self.is_available: bool = False
+
+        self._thread = threading.Thread(
+            target=self._worker_loop,
+            daemon=True,
+            name="UIAutomationScannerWorker",
+        )
+        self._thread.start()
+
+    def request_inspection(self, x: float, y: float):
+        """Richiede l'ispezione asincrona delle coordinate specificate (con throttling)."""
+        now = time.perf_counter()
+        # Throttling: massimo 1 richiesta ogni 35 ms per non saturare la coda COM
+        if now - self._last_req_time < 0.035:
+            return
+
+        with self._cv:
+            self._req_x = int(round(x))
+            self._req_y = int(round(y))
+            self._has_request = True
+            self._last_req_time = now
+            self._cv.notify()
+
+    def get_target(self, x: float, y: float, snap_radius: float) -> Optional[Tuple[float, float]]:
+        """
+        Restituisce il baricentro dell'ultimo target UIA agganciato se il cursore è nelle vicinanze.
+        Se il cursore si è allontanato, invalida automaticamente il target.
+        """
+        with self._target_lock:
+            if self._latest_target is None:
+                return None
+            l, t, r, b, cx, cy = self._latest_target
+
+            # Verifica se il cursore è ancora entro il raggio di influenza del target
+            if (l - snap_radius <= x <= r + snap_radius and
+                    t - snap_radius <= y <= b + snap_radius):
+                return cx, cy
+
+            # Se il cursore si è allontanato oltre 1.5x il raggio, resetta
+            if not (l - snap_radius * 1.5 <= x <= r + snap_radius * 1.5 and
+                    t - snap_radius * 1.5 <= y <= b + snap_radius * 1.5):
+                self._latest_target = None
+            return None
+
+    def clear_target(self):
+        """Cancella il target corrente in cache."""
+        with self._target_lock:
+            self._latest_target = None
+
+    def _worker_loop(self):
+        """Thread STA dedicato all'interrogazione COM di UI Automation."""
+        try:
+            ole32.CoInitialize(None)
+            p_auto = ctypes.c_void_p()
+            hr = ole32.CoCreateInstance(
+                ctypes.byref(CLSID_CUIAutomation),
+                None,
+                1,  # CLSCTX_INPROC_SERVER
+                ctypes.byref(IID_IUIAutomation),
+                ctypes.byref(p_auto),
+            )
+            if hr != 0 or not p_auto.value:
+                return
+
+            vtable = ctypes.cast(p_auto, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+            fn_ElementFromPoint = proto_ElementFromPoint(vtable[7])
+            fn_Release = proto_Release(vtable[2])
+            self.is_available = True
+
+            rect_out = wintypes.RECT()
+            pt_in = POINT_VAL(0, 0)
+            p_elem = ctypes.c_void_p()
+            ctype_out = ctypes.c_long()
+
+            while self._running:
+                with self._cv:
+                    while not self._has_request and self._running:
+                        self._cv.wait(timeout=0.08)
+                    if not self._running:
+                        break
+                    x = self._req_x
+                    y = self._req_y
+                    self._has_request = False
+
+                pt_in.x = x
+                pt_in.y = y
+                p_elem.value = 0
+
+                try:
+                    hr_elem = fn_ElementFromPoint(p_auto, pt_in, ctypes.byref(p_elem))
+                    if hr_elem == 0 and p_elem.value:
+                        elem_vtable = ctypes.cast(p_elem, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+                        fn_GetRect = proto_GetBoundingRect(elem_vtable[43])
+                        fn_GetType = proto_GetControlType(elem_vtable[21])
+                        fn_RelElem = proto_Release(elem_vtable[2])
+
+                        hr_rect = fn_GetRect(p_elem, ctypes.byref(rect_out))
+                        hr_type = fn_GetType(p_elem, ctypes.byref(ctype_out))
+                        fn_RelElem(p_elem)
+
+                        if hr_rect == 0:
+                            l, t, r, b = rect_out.left, rect_out.top, rect_out.right, rect_out.bottom
+                            w = r - l
+                            h = b - t
+                            area = w * h
+
+                            # Filtro Anti-Giant Container Trap
+                            if (self.min_dim <= w <= self.max_w and
+                                    self.min_dim <= h <= self.max_h and
+                                    area <= self.max_area):
+                                # Accetta controlli interattivi o elementi a dimensione pulsante
+                                is_interactive = (ctype_out.value in INTERACTIVE_CONTROL_TYPES) or (w <= 240 and h <= 80)
+                                if is_interactive:
+                                    cx = (l + r) / 2.0
+                                    cy = (t + b) / 2.0
+                                    with self._target_lock:
+                                        self._latest_target = (l, t, r, b, cx, cy)
+                                    continue
+                except Exception:
+                    pass
+
+                time.sleep(0.015)
+
+            fn_Release(p_auto)
+            ole32.CoUninitialize()
+        except Exception:
+            pass
+
+    def stop(self):
+        """Arresta in sicurezza il worker thread e rilascia l'apartment COM."""
+        with self._cv:
+            self._running = False
+            self._cv.notify_all()
+        if self._thread.is_alive():
+            self._thread.join(timeout=0.4)
 
 
 class MagneticSnapper:
     """
-    Motore di attrazione magnetica gravitazionale deterministica con breakout ad alta velocità
-    e compatibilità zero-churn per il Core Loop a 60-120 Hz.
+    Motore di attrazione magnetica gravitazionale deterministica con breakout ad alta velocità,
+    ispezione asincrona UI Automation e compatibilità zero-churn per il Core Loop a 60-120 Hz.
     """
 
     def __init__(
@@ -93,6 +327,7 @@ class MagneticSnapper:
         gravity_factor: float = 0.65,
         escape_velocity: float = 280.0,
         is_enabled: bool = True,
+        enable_uia: bool = True,
     ):
         self.snap_radius = float(snap_radius)
         self.gravity_factor = max(0.0, min(1.0, float(gravity_factor)))
@@ -120,6 +355,21 @@ class MagneticSnapper:
         self._cached_hwnd: Optional[int] = None
         self._cached_rect: Optional[Tuple[int, int, int, int]] = None
         self._cached_center: Optional[Tuple[float, float]] = None
+
+        # Scanner asincrono UI Automation per controlli profondi (Chrome/Edge/Electron)
+        self._enable_uia = enable_uia
+        self._uia_scanner: Optional[AsyncUIAutomationScanner] = (
+            AsyncUIAutomationScanner() if enable_uia else None
+        )
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        """Arresta il worker thread UIA su spegnimento."""
+        if self._uia_scanner is not None:
+            self._uia_scanner.stop()
+            self._uia_scanner = None
 
     def update_params(
         self,
@@ -149,6 +399,8 @@ class MagneticSnapper:
         self._cached_hwnd = None
         self._cached_rect = None
         self._cached_center = None
+        if self._uia_scanner is not None:
+            self._uia_scanner.clear_target()
 
     def add_mock_target(self, left: int, top: int, right: int, bottom: int, is_clickable: bool = True) -> int:
         """Registra un bersaglio mock per test headless o componenti grafici interni."""
@@ -178,7 +430,11 @@ class MagneticSnapper:
     def _find_target_centroid(self, x: float, y: float) -> Optional[Tuple[float, float, Optional[int]]]:
         """
         Trova il centro del bersaglio più vicino entro il raggio di prossimità.
-        Controlla prima i target mock (test / palette interna), poi interroga Win32.
+        Priorità:
+        1. Bersagli mock registrati (test headless, palette HUD interna).
+        2. Cache finestra Win32 attiva.
+        3. Cache asincrona Microsoft UI Automation (Chrome/Electron/Web).
+        4. Interrogazione immediata Win32 WindowFromPoint.
         """
         # 1. Verifica bersagli mock registrati
         if self._mock_targets:
@@ -199,7 +455,6 @@ class MagneticSnapper:
         # 2. Verifica finestra Win32 tramite cache veloce
         if self._cached_rect is not None and self._cached_center is not None:
             c_left, c_top, c_right, c_bottom = self._cached_rect
-            # Se siamo ancora nei pressi del rettangolo memorizzato in cache
             if (c_left - self.snap_radius <= x <= c_right + self.snap_radius and
                     c_top - self.snap_radius <= y <= c_bottom + self.snap_radius):
                 cx, cy = self._cached_center
@@ -211,7 +466,20 @@ class MagneticSnapper:
                 self._cached_rect = None
                 self._cached_center = None
 
-        # 3. Interrogazione diretta Win32 WindowFromPoint
+        # 3. Verifica bersaglio da UI Automation asincrono (Chrome/Web/Electron)
+        if self._uia_scanner is not None:
+            uia_centroid = self._uia_scanner.get_target(x, y, self.snap_radius)
+            if uia_centroid is not None:
+                cx, cy = uia_centroid
+                dist = math.hypot(x - cx, y - cy)
+                if dist <= self.snap_radius:
+                    return cx, cy, None
+
+        # 4. Se la velocità è moderata (fase di puntamento), richiedi scansione UIA
+        if self._uia_scanner is not None and self._current_velocity < 150.0:
+            self._uia_scanner.request_inspection(x, y)
+
+        # 5. Fallback immediato a Win32 WindowFromPoint per finestre e controlli nativi
         try:
             self._pt.x = int(round(x))
             self._pt.y = int(round(y))

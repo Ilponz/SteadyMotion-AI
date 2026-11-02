@@ -84,6 +84,20 @@ def build():
         # Cartella di destinazione per le relazioni cliniche riabilitative
         os.makedirs(os.path.join(dist_dir, "reports"), exist_ok=True)
 
+        # Copia cartella installer/ (script di firma Authenticode e installazione Program Files)
+        dist_installer = os.path.join(dist_dir, "installer")
+        if os.path.exists(dist_installer):
+            shutil.rmtree(dist_installer)
+        if os.path.exists(os.path.join(BASE_DIR, "installer")):
+            shutil.copytree(os.path.join(BASE_DIR, "installer"), dist_installer)
+
+        # Copia fascicolo tecnico MDR (Classe I SaMD) per conformita CE
+        dist_docs = os.path.join(dist_dir, "docs")
+        if os.path.exists(dist_docs):
+            shutil.rmtree(dist_docs)
+        if os.path.exists(os.path.join(BASE_DIR, "docs")):
+            shutil.copytree(os.path.join(BASE_DIR, "docs"), dist_docs)
+
         # Copia script di avvio rapido, slide-deck e diagnostica caregiver nella cartella portatile
         for extra_file in (
             "Avvia_EXE_Standalone.bat",

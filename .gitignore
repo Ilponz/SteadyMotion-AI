@@ -46,3 +46,6 @@ report_diagnostica_hardware.txt
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Local clinical reports
+reports/
