@@ -73,8 +73,11 @@ class CameraWorker:
         self.fps_counter: int = 0
         self.fps_timer: float = time.perf_counter()
 
-        # Auto-compensazione fotometrica dinamica per ambienti scarsamente illuminati (Zero-Heap LUT)
+        # Auto-compensazione fotometrica dinamica per ambienti scarsamente illuminati e controluce
         self.auto_exposure_boost: bool = True
+        self.clahe_enabled: bool = True
+        self._clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
+        self._ycrcb_buf: Optional[np.ndarray] = None
         self._lut_boost: np.ndarray = np.empty((1, 256), dtype=np.uint8)
         for i in range(256):
             self._lut_boost[0, i] = int(min(255, ((i / 255.0) ** 0.65) * 255.0))
@@ -173,9 +176,16 @@ class CameraWorker:
                     target_buf = self._raw_capture_buf.copy()
                 self._buffers[self._write_idx] = target_buf
 
-            # Compensazione fotometrica dinamica automatica in condizioni di scarsa luce (< 35 nit)
-            if self.auto_exposure_boost and self.current_luma < 35.0:
-                cv2.LUT(target_buf, self._lut_boost, dst=target_buf)
+            # Compensazione fotometrica dinamica automatica in condizioni di scarsa luce o forte controluce
+            if self.auto_exposure_boost and self.current_luma < 38.0:
+                if self.clahe_enabled:
+                    if self._ycrcb_buf is None or self._ycrcb_buf.shape != target_buf.shape:
+                        self._ycrcb_buf = np.empty_like(target_buf)
+                    cv2.cvtColor(target_buf, cv2.COLOR_BGR2YCrCb, dst=self._ycrcb_buf)
+                    self._ycrcb_buf[:, :, 0] = self._clahe.apply(self._ycrcb_buf[:, :, 0])
+                    cv2.cvtColor(self._ycrcb_buf, cv2.COLOR_YCrCb2BGR, dst=target_buf)
+                else:
+                    cv2.LUT(target_buf, self._lut_boost, dst=target_buf)
 
             # Swap atomico protetto: seleziona il prossimo slot di scrittura libero
             with self.lock:

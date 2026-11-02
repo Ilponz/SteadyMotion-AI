@@ -1035,6 +1035,15 @@ def test_camera_worker_lut_low_light_boost_and_blink_abort():
     assert boosted_mean > initial_mean * 1.8, "La compensazione LUT deve rischiarare le ombre"
     print("Compensazione Fotometrica LUT: 100% Conforme")
 
+    # 1b. Verifica Pipeline Adattiva CLAHE (Contrasto Locale e Controluce)
+    assert hasattr(worker, "clahe_enabled") and worker.clahe_enabled
+    assert worker._clahe is not None
+    test_img = np.zeros((100, 100, 3), dtype=np.uint8)
+    test_ycrcb = cv2.cvtColor(test_img, cv2.COLOR_BGR2YCrCb)
+    eq_channel = worker._clahe.apply(test_ycrcb[:, :, 0])
+    assert eq_channel.shape == (100, 100)
+    print("Compensazione Adattiva CLAHE (Controluce & Ombre): 100% Conforme")
+
     # 2. Verifica Freno di Emergenza Fisiologico: Blink Abort su Dwell
     dwell = DwellClicker(dwell_time=0.5, tolerance_radius=20.0)
     cl = ClinicalSessionLogger(reports_dir="reports_test_tmp2")

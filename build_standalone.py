@@ -45,12 +45,16 @@ def build():
         "--collect-all", "customtkinter",
     ]
 
+    manifest_file = os.path.join(BASE_DIR, "SteadyMotion-AI.manifest")
+    manifest_param = ["--manifest", manifest_file] if ("--ui-access" in sys.argv and os.path.exists(manifest_file)) else []
+
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name", "SteadyMotion-AI",
         "--onedir",
         "--noconsole",
         "--add-data", datas_param,
+        *manifest_param,
         *hidden_imports,
         "--clean",
         "--noconfirm",
