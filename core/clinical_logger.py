@@ -27,8 +27,12 @@ from typing import Any, Dict, List, Optional, Tuple
 class ClinicalSessionLogger:
     """Gestore della telemetria clinica e generatore di relazioni riabilitative."""
 
-    def __init__(self, reports_dir: str = "reports"):
-        self.reports_dir = reports_dir
+    def __init__(self, reports_dir: Optional[str] = None):
+        if reports_dir is None:
+            from core.utils import get_user_data_path
+            self.reports_dir = get_user_data_path("reports")
+        else:
+            self.reports_dir = reports_dir
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.start_timestamp = time.time()
         self.start_time_iso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

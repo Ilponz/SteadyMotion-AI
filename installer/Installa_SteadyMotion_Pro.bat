@@ -17,13 +17,15 @@ if %errorLevel% == 0 (
 )
 
 :run_install
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Create_Local_Cert_And_Install.ps1"
+if exist "%~dp0Setup_Wizard.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Setup_Wizard.ps1"
+) else (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Create_Local_Cert_And_Install.ps1"
+)
+
 if %errorlevel% neq 0 (
     echo.
     echo [ERRORE] L'installazione ha restituito un codice di errore: %errorlevel%
     pause
     exit /b %errorlevel%
 )
-
-echo.
-pause

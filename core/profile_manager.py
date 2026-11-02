@@ -100,8 +100,8 @@ class ProfileManager:
 
     def __init__(self, base_dir: Optional[str] = None):
         if base_dir is None:
-            # Cartella config relativa alla root di progetto
-            self.base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+            from core.utils import get_user_data_path
+            self.base_dir = get_user_data_path("config")
         else:
             self.base_dir = base_dir
 

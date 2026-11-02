@@ -137,7 +137,7 @@ class SteadyMotionApp:
         self.clinical_logger = ClinicalSessionLogger()
 
         # Gestione Licenza Commerciale & Periodo di Prova
-        self.license_manager = LicenseManager(config_dir="config")
+        self.license_manager = LicenseManager()
 
         # Camera Worker (Triple Buffering, Buffer=1, FourCC MJPG, 60 FPS, Event-Driven)
         self.camera = CameraWorker(

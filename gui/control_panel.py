@@ -29,7 +29,8 @@ from core.license_manager import LicenseManager
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-CONFIG_FILE = "config.json"
+from core.utils import get_user_data_path
+CONFIG_FILE = get_user_data_path("config.json")
 
 PRESETS: Dict[str, Dict[str, Any]] = {
     "Standard (Bilanciato)": {
@@ -1164,24 +1165,27 @@ class ControlPanel:
         row_docs.pack(fill="x", padx=10, pady=(0, 8))
 
         def _open_reports_folder():
-            rep_path = os.path.abspath("reports")
+            from core.utils import get_user_data_path
+            rep_path = get_user_data_path("reports")
             os.makedirs(rep_path, exist_ok=True)
             try:
                 os.startfile(rep_path)
             except Exception:
                 pass
 
-        def _open_mdr_docs():
-            doc_path = os.path.abspath("docs/medical_device_mdr")
-            if os.path.exists(doc_path):
+        def _open_ifu():
+            ifu_path = os.path.abspath("docs/medical_device_mdr/ISTRUZIONI_USO_IFU_CLASSE_I.md")
+            if not os.path.exists(ifu_path):
+                ifu_path = os.path.abspath("docs/medical_device_mdr")
+            if os.path.exists(ifu_path):
                 try:
-                    os.startfile(doc_path)
+                    os.startfile(ifu_path)
                 except Exception:
                     pass
 
         btn_rep = ctk.CTkButton(
             row_docs,
-            text="📁 Cartella Referti Clinici",
+            text="📁 Referti Clinici",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             fg_color="#334155",
             hover_color="#475569",
@@ -1191,11 +1195,11 @@ class ControlPanel:
 
         btn_ifu = ctk.CTkButton(
             row_docs,
-            text="📄 Fascicolo Tecnico MDR",
+            text="📄 Istruzioni Uso (IFU MDR)",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             fg_color="#334155",
             hover_color="#475569",
-            command=_open_mdr_docs,
+            command=_open_ifu,
         )
         btn_ifu.pack(side="right", expand=True, fill="x", padx=2)
 

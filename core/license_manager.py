@@ -114,8 +114,12 @@ class LicenseManager:
     Gestore dello stato di licenza, trial anti-tampering e persistenza locale protetta.
     """
 
-    def __init__(self, config_dir: str = "config"):
-        self.config_dir = config_dir
+    def __init__(self, config_dir: Optional[str] = None):
+        if config_dir is None:
+            from core.utils import get_user_data_path
+            self.config_dir = get_user_data_path("config")
+        else:
+            self.config_dir = config_dir
         self.state_file = os.path.join(self.config_dir, "license_state.json")
         self.machine_id = get_system_machine_id()
         self._state: Dict[str, Any] = {}

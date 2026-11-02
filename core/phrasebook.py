@@ -61,8 +61,12 @@ DEFAULT_PHRASEBOOK: Dict[str, List[str]] = {
 class PhrasebookManager:
     """Gestore del prontuario frasi cliniche e personalizzate AAC."""
 
-    def __init__(self, config_path: str = "config/phrasebook.json"):
-        self.config_path = config_path
+    def __init__(self, config_path: Optional[str] = None):
+        if config_path is None:
+            from core.utils import get_user_data_path
+            self.config_path = get_user_data_path("config/phrasebook.json")
+        else:
+            self.config_path = config_path
         self.categories: Dict[str, List[str]] = {}
         self.load()
 
