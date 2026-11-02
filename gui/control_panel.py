@@ -675,6 +675,33 @@ class ControlPanel:
         self._create_slider_row(card_snap, "Intensità Attrazione Gravitazionale", self.magnetic_gravity_val, 0.10, 1.00, "magnetic_gravity", "{:.2f}")
         self._create_slider_row(card_snap, "Raggio di Prossimità (px)", self.magnetic_radius_val, 15.0, 60.0, "magnetic_radius", "{:.1f} px")
 
+        # Card Scorrimento Continuo ai Bordi & Centratura Automatica
+        card_edge = ctk.CTkFrame(self.tab_controls, corner_radius=10)
+        card_edge.pack(fill="x", pady=3, padx=6)
+        ctk.CTkLabel(card_edge, text="SCORRIMENTO AI BORDI & CENTRATURA AUTOMATICA", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")).pack(anchor="w", padx=10, pady=(6, 2))
+
+        self.edge_scroll_enabled = tk.BooleanVar(value=True)
+        sw_edge = ctk.CTkSwitch(
+            card_edge,
+            text="Abilita Scorrimento Continuo ai Bordi Schermo (Edge Scrolling)",
+            variable=self.edge_scroll_enabled,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            command=lambda: self.on_param_change("edge_scrolling_enabled", self.edge_scroll_enabled.get()),
+            progress_color="#10b981",
+        )
+        sw_edge.pack(anchor="w", padx=10, pady=3)
+
+        self.auto_recenter_enabled = tk.BooleanVar(value=True)
+        sw_recenter = ctk.CTkSwitch(
+            card_edge,
+            text="Ricentratura Automatica Intelligente (Auto-Recenter dopo Assenza Volto)",
+            variable=self.auto_recenter_enabled,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            command=lambda: self.on_param_change("auto_recenter_enabled", self.auto_recenter_enabled.get()),
+            progress_color="#10b981",
+        )
+        sw_recenter.pack(anchor="w", padx=10, pady=(3, 6))
+
     # ---------------- TAB 3: PROFILI CLINICI ----------------
     def _build_tab_presets(self):
         desc_lbl = ctk.CTkLabel(

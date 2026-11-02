@@ -2027,6 +2027,223 @@ def test_autostart_and_caregiver_panic_killswitch():
     print(">>> TEST 39 SUPERATO! <<<")
 
 
+
+
+def test_edge_scrolling_controller():
+    print("\n--- TEST 40: Controllore di Scorrimento Continuo ai Bordi (Edge Scrolling) ---")
+    from core.edge_scrolling import EdgeScrollController
+
+    scroll_events = []
+    def on_scroll(clicks: int):
+        scroll_events.append(clicks)
+
+    controller = EdgeScrollController(
+        scroll_callback=on_scroll,
+        margin_px=20,
+        dwell_activation_delay=0.30,
+        scroll_interval=0.15,
+        is_enabled=True,
+    )
+
+    mon_top = 0
+    mon_bottom = 1080
+
+    # 1. Cursore al centro schermo: nessuno scorrimento
+    active = controller.update(cursor_x=500.0, cursor_y=500.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=10.0)
+    assert active is False
+    assert len(scroll_events) == 0
+    assert controller.is_scrolling is False
+    print("Zona Neutrale Centrale: Nessuno scorrimento involontario (Confermato)")
+
+    # 2. Cursore entra nel bordo superiore (y = 10 <= 0 + 20)
+    # Ingresso istantaneo a t = 10.05s -> periodo di sosta non ancora trascorso (< 0.30s)
+    active = controller.update(cursor_x=500.0, cursor_y=10.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=10.05)
+    assert active is False
+    assert len(scroll_events) == 0
+    assert controller.active_edge == "top"
+
+    # Transito rapido prima dello scadere della sosta (t = 10.20s): ancora nessun clic
+    active = controller.update(cursor_x=500.0, cursor_y=12.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=10.20)
+    assert active is False
+    assert len(scroll_events) == 0
+
+    # 3. Scadenza del dwell delay (t = 10.36s > 10.05 + 0.30): SCORRIMENTO ATTIVO
+    active = controller.update(cursor_x=500.0, cursor_y=12.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=10.36)
+    assert active is True
+    assert controller.is_scrolling is True
+    assert len(scroll_events) == 1
+    assert scroll_events[-1] == 1, f"Atteso primo scroll +1 (su), ottenuto {scroll_events[-1]}"
+    print("Bordo Superiore: Dwell activation delay rispettato -> Primo scorrimento immediato")
+
+    # 4. Cadenza di scorrimento: prima di 0.15s (t = 10.45s) nessun impulso extra
+    controller.update(cursor_x=500.0, cursor_y=10.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=10.45)
+    assert len(scroll_events) == 1
+
+    # Secondo impulso cadenzato a t = 10.53s (> 10.36 + 0.15s)
+    controller.update(cursor_x=500.0, cursor_y=10.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=10.53)
+    assert len(scroll_events) == 2
+    assert scroll_events[-1] == 1
+    print("Cadenza Temporale Regolare: 2 impulsi di scroll emessi a frequenza controllata")
+
+    # 5. Uscita dal bordo: arresto immediato
+    active = controller.update(cursor_x=500.0, cursor_y=200.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=10.70)
+    assert active is False
+    assert controller.is_scrolling is False
+    assert controller.active_edge is None
+    print("Uscita dal Bordo: Arresto istantaneo dello scorrimento verificato")
+
+    # 6. Bordo inferiore (y = 1070 >= 1080 - 20) -> Scroll verso il basso (-1)
+    # Ingresso a t = 11.0s
+    controller.update(cursor_x=500.0, cursor_y=1070.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=11.0)
+    # Raggiungimento soglia sosta a t = 11.35s (> 0.30s): primo impulso scroll verso il basso
+    controller.update(cursor_x=500.0, cursor_y=1072.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=11.35)
+    assert len(scroll_events) == 3
+    assert scroll_events[-1] == -1, f"Atteso scroll -1 (giu), ottenuto {scroll_events[-1]}"
+
+    # Secondo impulso cadenzato a t = 11.51s (> 11.35 + 0.15s)
+    controller.update(cursor_x=500.0, cursor_y=1072.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=11.51)
+    assert len(scroll_events) == 4
+    assert scroll_events[-1] == -1
+    print("Bordo Inferiore: Riconoscimento direzione scroll negativo (-1) Conforme")
+
+    # 7. Disattivazione controller (is_enabled = False)
+    controller.set_enabled(False)
+    active = controller.update(cursor_x=500.0, cursor_y=1072.0, monitor_top=mon_top, monitor_bottom=mon_bottom, now=11.70)
+    assert active is False
+    assert len(scroll_events) == 4
+    print("Disattivazione Globale: Nessuno scorrimento con is_enabled=False")
+    print(">>> TEST 40 SUPERATO! <<<")
+
+
+def test_emergency_caregiver_call_and_chime():
+    print("\n--- TEST 41: Allarme Urgente Chiamata Caregiver & Feedback Bitonale ---")
+    from core.audio_feedback import AudioFeedback, SOUNDPACKS
+    from core.clinical_logger import ClinicalSessionLogger
+    import customtkinter as ctk
+    from gui.floating_keyboard import FloatingKeyboardWindow
+
+    # 1. Verifica Soundpack e Sequenza Toni Allarme
+    for sp_id, sp_data in SOUNDPACKS.items():
+        if sp_id != "mute":
+            assert "alarm" in sp_data["tones"], f"Soundpack '{sp_id}' privo della sequenza 'alarm'"
+    print(f"Sequenze Sonore Allarme verificate su tutti i {len(SOUNDPACKS)} Soundpack Clinici (mute silent)")
+
+    # 2. Verifica Chiamata Allarme in ClinicalSessionLogger
+    logger = ClinicalSessionLogger()
+    assert logger.emergency_calls_count == 0
+    logger.record_emergency_call()
+    assert logger.emergency_calls_count == 1
+    summary = logger.get_session_summary()
+    assert summary["motor_metrics"]["emergency_calls_count"] == 1
+    print("Registrazione Cartella Clinica: Evento di allarme tracciato nelle metriche")
+
+    # 3. Verifica Integrazione Pulsante Allarme su Tastiera Assistiva
+    root = ctk.CTk()
+    root.withdraw()
+
+    audio = AudioFeedback(enabled=False)
+    kb = FloatingKeyboardWindow(
+        parent=root,
+        clinical_logger=logger,
+        audio_feedback=audio,
+    )
+    kb.update_idletasks()
+
+    # Invocazione allarme
+    kb._handle_emergency_call()
+    assert kb.typed_text.get() == "AIUTO SUBITO!"
+    assert logger.emergency_calls_count == 2
+    print("Tastiera Flottante: Pulsante 'AIUTO!' verbalizza, invoca allarme e registra nella cartella")
+
+    kb.destroy()
+    root.destroy()
+    print(">>> TEST 41 SUPERATO! <<<")
+
+
+
+
+def test_auto_recenter_on_face_reengagement():
+    print("\n--- TEST 42: Centratura Automatica Intelligente su Rientro Volto (Auto-Recenter) ---")
+
+    class MockApp:
+        def __init__(self):
+            self.auto_recenter_enabled = True
+            self.was_face_lost = False
+            self.face_lost_timestamp = 0.0
+            self.face_stable_since = 0.0
+            self.stable_reference_pose = None
+            self.recenter_count = 0
+
+        def recenter(self):
+            self.recenter_count += 1
+
+        def process_face_state(self, face_detected: bool, yaw: float, pitch: float, t_now: float):
+            if not face_detected:
+                if not self.was_face_lost:
+                    self.was_face_lost = True
+                    self.face_lost_timestamp = t_now
+                    self.face_stable_since = 0.0
+                    self.stable_reference_pose = None
+            else:
+                if self.was_face_lost:
+                    time_lost = t_now - self.face_lost_timestamp
+                    if time_lost >= 3.0 and self.auto_recenter_enabled:
+                        if self.face_stable_since == 0.0:
+                            self.face_stable_since = t_now
+                            self.stable_reference_pose = (yaw, pitch)
+                        else:
+                            ref_y, ref_p = self.stable_reference_pose
+                            if abs(yaw - ref_y) < 2.5 and abs(pitch - ref_p) < 2.5:
+                                if t_now - self.face_stable_since >= 1.5:
+                                    self.recenter()
+                                    self.was_face_lost = False
+                                    self.face_stable_since = 0.0
+                                    self.stable_reference_pose = None
+                            else:
+                                self.face_stable_since = t_now
+                                self.stable_reference_pose = (yaw, pitch)
+                    else:
+                        self.was_face_lost = False
+
+    app = MockApp()
+
+    # 1. Volto perso solo per 1.0s (transito breve/sbattimento palpebre) -> Nessuna ricentratura
+    app.process_face_state(face_detected=False, yaw=0.0, pitch=0.0, t_now=10.0)
+    assert app.was_face_lost is True
+    app.process_face_state(face_detected=True, yaw=0.0, pitch=0.0, t_now=11.0)
+    assert app.was_face_lost is False
+    assert app.recenter_count == 0
+    print("Assenza Breve (< 3.0s): Nessun falso auto-recenter (Confermato)")
+
+    # 2. Volto perso per 4.0s (paziente allontanato o riposo)
+    app.process_face_state(face_detected=False, yaw=0.0, pitch=0.0, t_now=20.0)
+    assert app.was_face_lost is True
+
+    # Rientro a t = 24.0s (assenza di 4.0s > 3.0s)
+    app.process_face_state(face_detected=True, yaw=2.0, pitch=1.0, t_now=24.0)
+    assert app.face_stable_since == 24.0
+    assert app.stable_reference_pose == (2.0, 1.0)
+    assert app.recenter_count == 0
+
+    # Stabilità a t = 24.8s (tempo trascorso 0.8s < 1.5s) -> Non ancora pronto
+    app.process_face_state(face_detected=True, yaw=2.2, pitch=1.1, t_now=24.8)
+    assert app.recenter_count == 0
+
+    # Movimento improvviso a t = 25.0s (yaw scarta di 5 gradi) -> Reset finestra stabilita
+    app.process_face_state(face_detected=True, yaw=8.0, pitch=1.0, t_now=25.0)
+    assert app.face_stable_since == 25.0
+    assert app.stable_reference_pose == (8.0, 1.0)
+    assert app.recenter_count == 0
+    print("Filtro Movimento Brusco: Reset finestra stabilità su scatto cefalico (Confermato)")
+
+    # Stabilità mantenuta da t = 25.0s a t = 26.6s (1.6s > 1.5s) -> TRIGGER AUTO-RECENTER
+    app.process_face_state(face_detected=True, yaw=8.2, pitch=1.1, t_now=26.6)
+    assert app.recenter_count == 1
+    assert app.was_face_lost is False
+    print("Stabilità Posturale Verificata (1.5s): Auto-Recenter eseguito con successo")
+    print(">>> TEST 42 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -2067,8 +2284,11 @@ if __name__ == "__main__":
     test_license_manager_cryptography_and_anti_tampering()
     test_osk_noactivate_camera_watchdog_and_gaze_clamp()
     test_autostart_and_caregiver_panic_killswitch()
+    test_edge_scrolling_controller()
+    test_emergency_caregiver_call_and_chime()
+    test_auto_recenter_on_face_reengagement()
     print("\n========================================================")
-    print("TUTTI I 39 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 42 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

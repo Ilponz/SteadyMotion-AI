@@ -61,6 +61,7 @@ class ClinicalSessionLogger:
         # Metriche Ergonomia
         self.head_drop_alerts: int = 0
         self.lateral_tilt_alerts: int = 0
+        self.emergency_calls_count: int = 0
 
         # Valutazioni Standardizzate ISO 9241-9 (Legge di Fitts & Throughput)
         self.fitts_assessments: List[Dict[str, Any]] = []
@@ -129,6 +130,10 @@ class ClinicalSessionLogger:
         saved = max(0, word_len - prefix_len - 1)
         self.keyboard_chars_saved += saved
 
+    def record_emergency_call(self):
+        """Registra un evento di allarme o chiamata urgente al caregiver."""
+        self.emergency_calls_count += 1
+
     def record_ergonomic_alert(self, reason: str):
         """Registra un'anomalia posturale cervicale sostenuta."""
         if "Head-Drop" in reason or "Caduta" in reason:
@@ -192,6 +197,7 @@ class ClinicalSessionLogger:
                 "copilot_caregiver_interventions": self.copilot_overrides,
                 "acoustic_clicks": self.acoustic_clicks,
                 "gesture_clicks": self.gesture_clicks,
+                "emergency_calls_count": self.emergency_calls_count,
             },
             "aac_metrics": {
                 "raw_keystrokes": self.keyboard_raw_keystrokes,

@@ -34,6 +34,7 @@ SOUNDPACKS: Dict[str, Dict[str, Any]] = {
             "drag_end": [(1300, 30), (900, 35)],
             "pause": [(700, 50)],
             "resume": [(1100, 40)],
+            "alarm": [(1760, 120), (2200, 160), (1760, 120), (2640, 250)],
         },
     },
     "mellow": {
@@ -46,6 +47,7 @@ SOUNDPACKS: Dict[str, Dict[str, Any]] = {
             "drag_end": [(550, 35), (440, 35)],
             "pause": [(380, 50)],
             "resume": [(500, 40)],
+            "alarm": [(660, 150), (880, 200), (660, 150), (1100, 250)],
         },
     },
     "high_contrast": {
@@ -58,6 +60,7 @@ SOUNDPACKS: Dict[str, Dict[str, Any]] = {
             "drag_end": [(1800, 40), (1200, 45)],
             "pause": [(900, 60)],
             "resume": [(1500, 50)],
+            "alarm": [(2000, 150), (2800, 200), (2000, 150), (3200, 300)],
         },
     },
     "subtle": {
@@ -70,6 +73,7 @@ SOUNDPACKS: Dict[str, Dict[str, Any]] = {
             "drag_end": [(1100, 20), (800, 20)],
             "pause": [(600, 30)],
             "resume": [(900, 25)],
+            "alarm": [(1400, 80), (1800, 100), (1400, 80), (2200, 150)],
         },
     },
     "mute": {
@@ -110,6 +114,10 @@ class AudioFeedback:
     def get_available_soundpacks() -> List[Tuple[str, str]]:
         """Restituisce l'elenco dei soundpack clinici disponibili (id, display_name)."""
         return [(k, v["name"]) for k, v in SOUNDPACKS.items()]
+
+    def play_alarm(self):
+        """Emette la sequenza bitonale urgente per la chiamata caregiver."""
+        self.play("alarm")
 
     def play(self, sound_type: str = "click_left"):
         """Accoda la richiesta sonora senza bloccare il thread chiamante."""

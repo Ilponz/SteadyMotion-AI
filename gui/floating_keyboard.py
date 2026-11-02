@@ -29,11 +29,13 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         virtual_input_controller: Optional[Any] = None,
         on_close_callback: Optional[Callable[[], None]] = None,
         clinical_logger: Optional[Any] = None,
+        audio_feedback: Optional[Any] = None,
     ):
         super().__init__(parent)
         self.virtual_input = virtual_input_controller
         self.on_close_callback = on_close_callback
         self.clinical_logger = clinical_logger
+        self.audio_feedback = audio_feedback
 
         self.title("Tastiera Assistiva Flottante — SteadyMotion AI")
         self.geometry("820x430+150+480")
@@ -118,6 +120,19 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             command=self._speak_text,
         )
         btn_tts.pack(side="right", padx=4)
+
+        # Pulsante Allarme Caregiver
+        btn_alarm = ctk.CTkButton(
+            top_bar,
+            text="🚨 AIUTO!",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            height=26,
+            width=75,
+            fg_color="#DC2626",
+            hover_color="#B91C1C",
+            command=self._handle_emergency_call,
+        )
+        btn_alarm.pack(side="right", padx=4)
 
         # Pulsante Cancella Tutto
         btn_clear = ctk.CTkButton(
@@ -544,6 +559,21 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             self.display_entry.icursor(tk.END)
         except Exception:
             pass
+
+    def _handle_emergency_call(self):
+        """Attiva l'allarme urgente per chiamare il caregiver e verbalizza la richiesta di soccorso."""
+        self.typed_text.set("AIUTO SUBITO!")
+        if hasattr(self, "audio_feedback") and self.audio_feedback is not None:
+            try:
+                self.audio_feedback.play_alarm()
+            except Exception:
+                pass
+        if hasattr(self, "clinical_logger") and self.clinical_logger is not None:
+            try:
+                self.clinical_logger.record_emergency_call()
+            except Exception:
+                pass
+        self._speak_phrase("Attenzione! Richiesta di aiuto immediato! Vieni qui per favore!")
 
     def _speak_text(self):
         text = self.typed_text.get().strip()

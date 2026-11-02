@@ -26,6 +26,7 @@ from core.license_manager import LicenseManager
 from core.copilot import CaregiverCoPilot
 from core.dsp_filter import PointFilter2D
 from core.dwell_clicker import DwellClicker
+from core.edge_scrolling import EdgeScrollController
 from core.ergonomics import ErgonomicsMonitor
 from core.audio_feedback import AudioFeedback
 from core.gesture_trigger import GestureTrigger
@@ -126,6 +127,22 @@ class SteadyMotionApp:
             escape_velocity=280.0,
             is_enabled=True,
         )
+
+        # Controllore di Scorrimento Continuo ai Bordi dello Schermo (Edge Scrolling)
+        self.edge_scrolling = EdgeScrollController(
+            scroll_callback=lambda clicks: self.mouse.scroll(clicks),
+            margin_px=24,
+            dwell_activation_delay=0.35,
+            scroll_interval=0.14,
+            is_enabled=True,
+        )
+
+        # Centratura Automatica Intelligente (Auto-Recenter dopo Assenza Volto)
+        self.auto_recenter_enabled = True
+        self.was_face_lost = False
+        self.face_lost_timestamp = 0.0
+        self.face_stable_since = 0.0
+        self.stable_reference_pose = None
 
         # Trigger Gesti Facciali Silenziosi (FACS Blendshapes: Jaw Open, Smile, Brow)
         self.gesture_trigger = GestureTrigger(
@@ -303,6 +320,7 @@ class SteadyMotionApp:
             virtual_input_controller=self.mouse,
             on_close_callback=lambda: setattr(self, "_floating_kbd", None),
             clinical_logger=self.clinical_logger,
+            audio_feedback=self.audio_feedback,
         )
 
     def open_diagnostic_window(self):
@@ -381,6 +399,10 @@ class SteadyMotionApp:
             self.magnetic_snapper.update_params(gravity_factor=float(value))
         elif param_name == "magnetic_radius":
             self.magnetic_snapper.update_params(snap_radius=float(value))
+        elif param_name == "edge_scrolling_enabled":
+            self.edge_scrolling.set_enabled(bool(value))
+        elif param_name == "auto_recenter_enabled":
+            self.auto_recenter_enabled = bool(value)
         elif param_name == "gesture_enabled":
             self.gesture_trigger.update_params(is_enabled=bool(value))
         elif param_name == "gesture_type":
@@ -565,7 +587,25 @@ class SteadyMotionApp:
                         self.mouse.move_to_pixel(snap_x, snap_y)
                         self.copilot.record_injection(snap_x, snap_y)
                         self.clinical_logger.record_cursor_movement(snap_x, snap_y)
-                        self.dwell_clicker.update(snap_x, snap_y, t_now)
+
+                        # Verifica Edge Scrolling continuo ai bordi dello schermo
+                        cur_mon = self.mouse.get_monitor_at(snap_x, snap_y)
+                        mon_top = cur_mon.top if cur_mon else 0
+                        mon_bottom = cur_mon.bottom if cur_mon else self.mouse.vh
+
+                        is_edge_scrolling = self.edge_scrolling.update(
+                            cursor_x=snap_x,
+                            cursor_y=snap_y,
+                            monitor_top=mon_top,
+                            monitor_bottom=mon_bottom,
+                            now=t_now,
+                        )
+
+                        if is_edge_scrolling:
+                            self.dwell_clicker.cancel()
+                            self.hud.hide()
+                        else:
+                            self.dwell_clicker.update(snap_x, snap_y, t_now)
 
                 with self.telemetry_lock:
                     self.shared_fps = loop_fps
@@ -595,6 +635,35 @@ class SteadyMotionApp:
             if ret and frame is not None:
                 res = self.tracker.process_frame(frame, timestamp_sec=t_now)
                 face_detected = res.face_detected
+
+                # Gestione Centratura Automatica su Rientro Volto (Auto-Recenter on Face Re-Engagement)
+                if not face_detected:
+                    if not self.was_face_lost:
+                        self.was_face_lost = True
+                        self.face_lost_timestamp = t_now
+                        self.face_stable_since = 0.0
+                        self.stable_reference_pose = None
+                else:
+                    if self.was_face_lost:
+                        time_lost = t_now - self.face_lost_timestamp
+                        if time_lost >= 3.0 and self.auto_recenter_enabled:
+                            if self.face_stable_since == 0.0:
+                                self.face_stable_since = t_now
+                                self.stable_reference_pose = (res.yaw, res.pitch)
+                            else:
+                                ref_y, ref_p = self.stable_reference_pose
+                                if abs(res.yaw - ref_y) < 2.5 and abs(res.pitch - ref_p) < 2.5:
+                                    if t_now - self.face_stable_since >= 1.5:
+                                        self.recenter()
+                                        self.audio_feedback.play("resume")
+                                        self.was_face_lost = False
+                                        self.face_stable_since = 0.0
+                                        self.stable_reference_pose = None
+                                else:
+                                    self.face_stable_since = t_now
+                                    self.stable_reference_pose = (res.yaw, res.pitch)
+                        else:
+                            self.was_face_lost = False
                 is_blinking = res.is_blinking
                 yaw = res.yaw
                 pitch = res.pitch
