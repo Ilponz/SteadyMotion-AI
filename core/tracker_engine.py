@@ -42,7 +42,9 @@ class TrackerResult(NamedTuple):
     iris_dy: float
     # Diagnostica Illuminazione Ambientale
     light_mean: float = 128.0
-    light_status: str = "optimal" 
+    light_status: str = "optimal"
+    blink_left_score: float = 0.0
+    blink_right_score: float = 0.0
 
 
 class FaceTrackerEngine:
@@ -327,4 +329,6 @@ class FaceTrackerEngine:
             iris_dy=iris_dy,
             light_mean=float(lum),
             light_status=light_stat,
+            blink_left_score=blink_l,
+            blink_right_score=blink_r,
         )

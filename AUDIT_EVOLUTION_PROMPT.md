@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **67 su 67 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **68 su 68 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -110,6 +110,7 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Reticolo di Fissazione HUD & Micro-Scatter Bio-Feedback (gui/hud_overlay.py):** Mirino di precisione sub-pixel, cerchio tratteggiato della soglia di tolleranza e buffer circolare dello storico scostamenti (8 campioni) per bio-feedback visivo continuo al paziente durante la sosta Dwell.
 - [x] **Tasti Modificatori Win32 & Scorciatoie Assistive (core/virtual_input.py & gui/floating_keyboard.py):** Iniezione SendInput nativa sequenziale a 4 eventi firmata 'STEA' per combinazioni di sistema (Ctrl+C, Ctrl+V, Ctrl+A, Ctrl+Z, Tab, Esc) su tastiera assistiva a zero furto di focus.
 - [x] **Tastiera Assistiva Smart Shift, Caps Lock & Auto-Capitalizzazione (gui/floating_keyboard.py):** Macchina a stati Shift (Minuscolo -> Shift singolo carattere -> Caps Lock permanente -> Minuscolo), tasto apostrofo integrato, feedback acustico al tocco e auto-capitalizzazione automatica dopo punto fermo ed esclamativo/interrogativo per digitazione fluida e naturale in CAA.
+- [x] **Trigger Gesti Facciali con Occhiolino Monoculare & Filtro Tenuta Anti-Speech (core/gesture_trigger.py & core/tracker_engine.py):** Monitoraggio separato di ammiccamento sinistro e destro con supporto gesti 'wink_left' e 'wink_right' (occlusione monoculare volontaria distinta dall'ammiccamento bilaterale di sicurezza) e filtro temporale di tenuta minima configurabile (Anti-Speech Hold Filter >= 120 ms) per azzerare i falsi clic durante la normale conversazione fonetica o sbadigli.
 
 ---
 

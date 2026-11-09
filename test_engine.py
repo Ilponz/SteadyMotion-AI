@@ -3441,6 +3441,61 @@ def test_assistive_keyboard_smart_shift_and_auto_capitalization():
     print(">>> TEST 67 SUPERATO! <<<")
 
 
+def test_gesture_trigger_monocular_wink_and_anti_speech_hold():
+    """TEST 68: Trigger Gesti Facciali: Occhiolino Monoculare (Wink) & Filtro Tenuta Anti-Parlato."""
+    print("\n--- TEST 68: Gesti Facciali: Occhiolino Monoculare & Filtro Tenuta Anti-Parlato ---")
+    from core.gesture_trigger import GestureTrigger
+
+    clicks = []
+    gt = GestureTrigger(
+        gesture_type="wink_left",
+        trigger_threshold=0.50,
+        release_threshold=0.20,
+        debounce_sec=0.35,
+        min_hold_sec=0.12,  # 120 ms di tenuta minima per discriminare transitori
+        click_callback=lambda g: clicks.append(g),
+        is_enabled=True,
+    )
+
+    t = 1000.0
+
+    # 1. Ammiccamento fisiologico bilaterale (entrambi gli occhi si chiudono)
+    # blink_l = 0.85, blink_r = 0.80 -> NON deve attivare il wink monoculare!
+    c = gt.process_blendshapes(blink_left_score=0.85, blink_right_score=0.80, now=t)
+    assert not c and len(clicks) == 0, "Ammiccamento bilaterale non deve attivare il wink monoculare"
+    print("Distinzione Ammiccamento vs Wink: Ammiccamento bilaterale (85%/80%) correttamente ignorato")
+
+    # 2. Transitorio rapido o parlato (wink_left per soli 40 ms < min_hold_sec 120 ms)
+    gt.process_blendshapes(blink_left_score=0.85, blink_right_score=0.10, now=t + 0.10)
+    assert len(clicks) == 0, "Al primo frame sopra soglia, l'attivazione deve attendere la tenuta minima"
+    # Rilascio prematuro a 50 ms
+    gt.process_blendshapes(blink_left_score=0.15, blink_right_score=0.10, now=t + 0.15)
+    assert len(clicks) == 0, "Gesto transitorio < 120 ms deve essere soppresso (Filtro Anti-Speech)"
+    print("Filtro Tenuta Anti-Speech (dt=50ms < 120ms): Falso positivo transitorio soppresso con successo")
+
+    # 3. Wink Sinistro Volontario Sostenuto (tenuta 140 ms >= 120 ms)
+    t_start = t + 0.30
+    gt.process_blendshapes(blink_left_score=0.85, blink_right_score=0.10, now=t_start)
+    assert len(clicks) == 0
+    c_wink = gt.process_blendshapes(blink_left_score=0.85, blink_right_score=0.10, now=t_start + 0.14)
+    assert c_wink and len(clicks) == 1, "Wink sinistro sostenuto deve innescare il clic"
+    assert clicks[-1] == "wink_left"
+    print("Attivazione Volontaria Wink Sinistro (tenuta 140ms): Clic 1 eseguito regolarmente")
+
+    # 4. Riarmo e commutazione su Wink Destro
+    gt.process_blendshapes(blink_left_score=0.10, blink_right_score=0.10, now=t_start + 0.50)
+    gt.update_params(gesture_type="wink_right", min_hold_sec=0.10)
+
+    # Occhiolino destro sostenuto (120 ms >= 100 ms)
+    t_r = t + 1.0
+    gt.process_blendshapes(blink_left_score=0.10, blink_right_score=0.85, now=t_r)
+    c_r = gt.process_blendshapes(blink_left_score=0.10, blink_right_score=0.85, now=t_r + 0.12)
+    assert c_r and len(clicks) == 2
+    assert clicks[-1] == "wink_right"
+    print("Attivazione Volontaria Wink Destro: Clic 2 eseguito regolarmente")
+    print(">>> TEST 68 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -3509,8 +3564,9 @@ if __name__ == "__main__":
     test_hud_fixation_stability_reticle_and_micro_scatter()
     test_acoustic_trigger_zero_heap_dsp_and_in_place_buffers()
     test_assistive_keyboard_smart_shift_and_auto_capitalization()
+    test_gesture_trigger_monocular_wink_and_anti_speech_hold()
     print("\n========================================================")
-    print("TUTTI I 67 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 68 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

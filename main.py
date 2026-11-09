@@ -814,6 +814,8 @@ class SteadyMotionApp:
                             jaw_open_score=res.jaw_open_score,
                             smile_score=res.smile_score,
                             brow_down_score=res.brow_down_score,
+                            blink_left_score=getattr(res, "blink_left_score", 0.0),
+                            blink_right_score=getattr(res, "blink_right_score", 0.0),
                             now=t_now,
                         )
 
