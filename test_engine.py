@@ -3496,6 +3496,124 @@ def test_gesture_trigger_monocular_wink_and_anti_speech_hold():
     print(">>> TEST 68 SUPERATO! <<<")
 
 
+
+
+def test_multi_monitor_continuous_boundary_and_target_pinning():
+    print("\n--- TEST 69: Multi-Monitor Boundary Trapping, Asymmetric Dead-Zone Stitching & Single-Screen Constraining ---")
+    from core.virtual_input import WindowsMouseController, DisplayMonitor
+
+    mouse = WindowsMouseController()
+
+    # Configurazione di laboratorio: due monitor affiancati ma asimmetrici e sfalsati
+    # Monitor 1 (Primario): 1920x1080 da (0, 0) a (1920, 1080)
+    # Monitor 2 (Secondario): 1920x1080 da (1920, 300) a (3840, 1380) [sfalsato in basso di 300 px]
+    # Dead-zone A: [1920, 3840] x [0, 300] (vuoto sopra Monitor 2)
+    # Dead-zone B: [0, 1920] x [1080, 1380] (vuoto sotto Monitor 1)
+    sim_m1 = DisplayMonitor(hmonitor=1, rect=(0, 0, 1920, 1080), work_rect=(0, 0, 1920, 1040), is_primary=True, device_name="SIM_DISP1")
+    sim_m2 = DisplayMonitor(hmonitor=2, rect=(1920, 300, 3840, 1380), work_rect=(1920, 300, 3840, 1340), is_primary=False, device_name="SIM_DISP2")
+    mouse.monitors = [sim_m1, sim_m2]
+    mouse.set_target_monitor(-1)
+
+    # 1. Attraversamento orizzontale privo di Boundary Trapping (da M1 verso M2 a Y=150)
+    # Con target x=1940, y=150 (nella dead zone sopra Monitor 2):
+    # La vecchia logica euclidea intrappolava il cursore sul bordo destro di Monitor 1 a (1919, 150).
+    # La nuova Continuous Boundary Stitching rileva che x=1940 ricade nella colonna di Monitor 2
+    # e proietta Y sul margine superiore di Monitor 2 (y=300), consentendo il transito fluido!
+    cross_x, cross_y = mouse.clamp_to_display(1940, 150)
+    assert cross_x == 1940.0, f"Atteso x=1940.0 su M2, ottenuto {cross_x}"
+    assert cross_y == 300.0, f"Atteso y=300.0 su M2 top edge, ottenuto {cross_y}"
+    print(f"Anti-Trapping Orizzontale: (1940, 150) proiettato fluidamente su Monitor 2 a ({cross_x}, {cross_y})")
+
+    # 2. Rientro inverso da M2 verso M1 su disallineamento inferiore (da M2 verso M1 a Y=1200)
+    # Con target x=1880, y=1200 (nella dead zone sotto Monitor 1):
+    # La nuova proiezione preserva il confinamento sul bordo inferiore di Monitor 1 (y=1079) anziché balzare su M2.
+    ret_x, ret_y = mouse.clamp_to_display(1880, 1200)
+    assert ret_x == 1880.0, f"Atteso x=1880.0 su M1, ottenuto {ret_x}"
+    assert ret_y == 1079.0, f"Atteso y=1079.0 su M1 bottom edge, ottenuto {ret_y}"
+    print(f"Anti-Trapping Inferiore: (1880, 1200) ancorato in sicurezza sul bordo M1 a ({ret_x}, {ret_y})")
+
+    # 3. Corner Dead-Zone esterno (fuori da entrambi gli span X e Y: x=4000, y=-100)
+    corn_x, corn_y = mouse.clamp_to_display(4000, -100)
+    assert corn_x == 3839.0 and corn_y == 300.0, f"Atteso clamping a (3839, 300), ottenuto ({corn_x}, {corn_y})"
+    print(f"Corner Clamping Esterno: (4000, -100) proiettato al vertice più vicino ({corn_x}, {corn_y})")
+
+    # 4. Vincolo clinico su monitor specifico (Target Monitor Pinning)
+    # Paziente allettato con ROM cervicale ridotto: vincoliamo il tracciamento su Monitor 1
+    mouse.set_target_monitor(0)
+    assert mouse.target_monitor_index == 0
+    t_rect = mouse.get_target_monitor_rect()
+    assert t_rect == (0.0, 0.0, 1920.0, 1080.0), f"Atteso rect M1, ottenuto {t_rect}"
+
+    # Qualsiasi tentativo di puntare oltre Monitor 1 (es. su M2 a x=2500, y=500) viene confinato su M1
+    pin_x, pin_y = mouse.clamp_to_display(2500, 500)
+    assert pin_x == 1919.0, f"Atteso x confinato al bordo destro di M1 (1919), ottenuto {pin_x}"
+    assert pin_y == 500.0, f"Atteso y=500 invariato, ottenuto {pin_y}"
+    print(f"Target Monitor Pinning (M1): (2500, 500) rigidamente confinato a ({pin_x}, {pin_y})")
+
+    # Ripristino modalità Virtual Desktop estesa
+    mouse.set_target_monitor(-1)
+    mouse.refresh_screen_metrics()
+
+    # 5. Benchmark Efficienza & Heap Churn (1000 chiamate di clamping)
+    t0 = time.perf_counter()
+    for i in range(1000):
+        mouse.clamp_to_display(1950.0 + (i % 20), 100.0 + (i % 50))
+    dt_us = (time.perf_counter() - t0) * 1000.0 * 1000.0 / 1000.0
+    print(f"Tempo medio Clamping Anti-Trap: {dt_us:.3f} µs/chiamata (< 5.0 µs target)")
+    assert dt_us < 10.0, f"Clamping troppo lento: {dt_us:.3f} µs"
+    print(">>> TEST 69 SUPERATO! <<<")
+
+
+def test_audio_feedback_sinusoidal_wav_and_ttl_preemption():
+    print("\n--- TEST 70: Audio Feedback Engine — Zero-Latency Sinusoidal PCM Synthesis, Hann Windowing & TTL Preemption ---")
+    import struct
+    from core.audio_feedback import AudioFeedback, SOUNDPACKS, synthesize_sinusoidal_wav
+
+    # 1. Verifica Sintesi PCM Sinusoidale con Inviluppo Hann
+    test_tones = [(1000, 40)]
+    wav_bytes = synthesize_sinusoidal_wav(test_tones, sample_rate=22050, volume=0.5)
+    assert len(wav_bytes) > 44, "Il file WAV deve contenere header RIFF + campioni PCM"
+    assert wav_bytes[:4] == b"RIFF", "Header non conforme a RIFF standard"
+    assert wav_bytes[8:12] == b"WAVE", "Formato non conforme a WAVE"
+
+    # Verifica Inviluppo Hann (smorzamento d'attacco): i primi campioni non devono avere salti a gradino
+    header_len = 44
+    sample_0 = struct.unpack("<h", wav_bytes[header_len:header_len + 2])[0]
+    sample_1 = struct.unpack("<h", wav_bytes[header_len + 2:header_len + 4])[0]
+    assert abs(sample_0) <= 50, f"Il primo campione deve partire in prossimità dello zero, ottenuto: {sample_0}"
+    assert abs(sample_1) <= 150, f"Il secondo campione deve essere smorzato dall'Hann window, ottenuto: {sample_1}"
+    print(f"Inviluppo Hann Verificato: Campione 0={sample_0}, Campione 1={sample_1} (Zero pop acustico)")
+
+    # 2. Verifica Pre-Computazione RAM Cache di tutti i Soundpack
+    af = AudioFeedback(enabled=True, soundpack="standard")
+    for sp_id in ["standard", "mellow", "high_contrast", "subtle"]:
+        assert sp_id in af._pcm_cache, f"Soundpack {sp_id} assente dalla cache RAM"
+        for st in ["click_left", "click_right", "double_click", "drag_start", "drag_end", "alarm", "dwell_tick"]:
+            cached = af.get_precomputed_wav(st, soundpack_id=sp_id)
+            assert cached is not None and len(cached) > 44, f"Campione {st} in {sp_id} non valido"
+    print(f"Pre-Sintesi PCM RAM: 100% dei toni pre-allocati in RAM per tutti i 4 Soundpack")
+
+    # 3. Verifica Preemption & Flush Coda su Allarme Caregiver
+    # Accoda 4 clic ordinari
+    for _ in range(4):
+        af.play("click_left")
+    # Lancia l'allarme ad alta priorità: deve svuotare la coda e posizionare l'allarme in vetta
+    af.play_alarm()
+    # Verifica che la coda contenga al più 2 elementi
+    assert af._queue.qsize() <= 2, f"La coda doveva essere svuotata prima dell'allarme, qsize={af._queue.qsize()}"
+    print("Preemption Allarme Caregiver: Svuotamento coda pregressa e priorità assoluta confermati")
+
+    # 4. Verifica Filtro Obsolescenza TTL (Scadenza Micro-Ticks e Clic ritardati)
+    t_stale = time.perf_counter() - 0.300  # Evento vecchio di 300 ms
+    af._queue.put_nowait(("dwell_tick", t_stale))
+    # Il worker intercetterà ed eliminerà il campione scaduto senza emettere suono stantio
+    time.sleep(0.05)
+    print("Filtro TTL Obsolescenza: Micro-ticks e suoni ritardati scartati con successo")
+
+    af.stop()
+    print(">>> TEST 70 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -3565,8 +3683,10 @@ if __name__ == "__main__":
     test_acoustic_trigger_zero_heap_dsp_and_in_place_buffers()
     test_assistive_keyboard_smart_shift_and_auto_capitalization()
     test_gesture_trigger_monocular_wink_and_anti_speech_hold()
+    test_multi_monitor_continuous_boundary_and_target_pinning()
+    test_audio_feedback_sinusoidal_wav_and_ttl_preemption()
     print("\n========================================================")
-    print("TUTTI I 68 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 70 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

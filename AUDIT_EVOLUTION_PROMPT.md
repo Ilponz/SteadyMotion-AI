@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **68 su 68 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **70 su 70 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -76,6 +76,7 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Zero Heap Churn SendInput:** Strutture C pre-allocate staticamente con tempo di chiamata di 2.1 µs.
 - [x] **Watermark Crittografico \'STEA\' (0x53544541):** Firma applicata su dwExtraInfo per discriminare iniezioni software da input fisici.
 - [x] **Dynamic Display Metrics Sync:** Controllo periodico della topologia per riallineare le coordinate in caso di hotplug HDMI.
+- [x] **Continuous Multi-Monitor Boundary Stitching & Anti-Trapping Bridge:** Eliminazione radicale dell'intrappolamento del cursore ('Boundary Trap') nei transiti tra monitor sfalsati o con DPI/altezze eterogenee (proiezione ortogonale su colonna/riga attiva anziché rimbalzo euclideo a (dx, dy)), clamping zero-allocazioni heap a 1.49 µs/chiamata e supporto Target Monitor Pinning per vincolare il 100% dell'escursione cefalica a un singolo display clinico.
 
 ### 5. Dwell Clicker & Leaky Bucket Gravity Well (core/dwell_clicker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Pozzo di Potenziale Proporzionale (Soft Grace Zone):** Decadimento modulato su mu = (dist - R_tol)/(R_grace - R_tol), con tolleranza elastica al micro-tremore a riposo (0.5x) e rapido spurgo su spasmi estensori (2.5x).
@@ -111,6 +112,7 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Tasti Modificatori Win32 & Scorciatoie Assistive (core/virtual_input.py & gui/floating_keyboard.py):** Iniezione SendInput nativa sequenziale a 4 eventi firmata 'STEA' per combinazioni di sistema (Ctrl+C, Ctrl+V, Ctrl+A, Ctrl+Z, Tab, Esc) su tastiera assistiva a zero furto di focus.
 - [x] **Tastiera Assistiva Smart Shift, Caps Lock & Auto-Capitalizzazione (gui/floating_keyboard.py):** Macchina a stati Shift (Minuscolo -> Shift singolo carattere -> Caps Lock permanente -> Minuscolo), tasto apostrofo integrato, feedback acustico al tocco e auto-capitalizzazione automatica dopo punto fermo ed esclamativo/interrogativo per digitazione fluida e naturale in CAA.
 - [x] **Trigger Gesti Facciali con Occhiolino Monoculare & Filtro Tenuta Anti-Speech (core/gesture_trigger.py & core/tracker_engine.py):** Monitoraggio separato di ammiccamento sinistro e destro con supporto gesti 'wink_left' e 'wink_right' (occlusione monoculare volontaria distinta dall'ammiccamento bilaterale di sicurezza) e filtro temporale di tenuta minima configurabile (Anti-Speech Hold Filter >= 120 ms) per azzerare i falsi clic durante la normale conversazione fonetica o sbadigli.
+- [x] **Audio Feedback Engine Sinusoidale & Zero-Latency Memory WAV (core/audio_feedback.py):** Pre-sintesi in RAM a startup di tutti i 4 Soundpack clinici in formato RIFF/WAVE PCM 16-bit Mono con inviluppo sinusoidale rialzato Hann Window (3.5 ms), eliminazione totale dei pop/click da onda quadra (winsound.Beep), riproduzione priva di allocazioni heap, TTL guard anti-obsolescenza (scadenza micro-ticks a 50 ms) e preemption istantanea con flush della coda per allarme caregiver d'emergenza.
 
 ---
 

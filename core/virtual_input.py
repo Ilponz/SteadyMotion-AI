@@ -244,6 +244,7 @@ class WindowsMouseController:
         enable_high_precision_timer()
         self.signature_extra = ULONG_PTR(STEADYMOTION_INPUT_SIGNATURE)
         self.monitors: List[DisplayMonitor] = []
+        self.target_monitor_index: int = -1  # -1 = Intero Virtual Desktop, 0..N = Monitor Specifico
         self.refresh_screen_metrics()
         self.is_dragging = False
 
@@ -309,22 +310,101 @@ class WindowsMouseController:
                 return m
         return None
 
+    def set_target_monitor(self, monitor_index: int):
+        """
+        Imposta il monitor target su cui vincolare il puntamento (-1 = intero Virtual Desktop).
+        Quando impostato su un indice valido (0..N-1), il puntatore viene confinato entro quel display,
+        massimizzando l'escursione cefalica per pazienti con mobilità cervicale severamente limitata.
+        """
+        self.target_monitor_index = int(monitor_index)
+
+    def get_target_monitor_rect(self) -> Tuple[float, float, float, float]:
+        """
+        Restituisce (vx, vy, vw, vh) dell'area attiva di tracciamento.
+        Se target_monitor_index è attivo ed è un indice valido, restituisce l'area di quel monitor,
+        altrimenti restituisce i limiti globali del Virtual Desktop.
+        """
+        if 0 <= self.target_monitor_index < len(self.monitors):
+            m = self.monitors[self.target_monitor_index]
+            return float(m.left), float(m.top), float(m.width), float(m.height)
+        return self.vx, self.vy, self.vw, self.vh
+
     def clamp_to_display(self, x: float, y: float) -> Tuple[float, float]:
         """
         Blocca le coordinate all'interno della superficie visibile dei monitor attivi.
-        Se il cursore si trova in una 'dead zone' (vuoto virtuale tra schermi di altezze diverse),
-        proietta il cursore sul perimetro del monitor più vicino, impedendone la scomparsa.
+        Se target_monitor_index è attivo, vincola rigidamente al perimetro del monitor selezionato.
+        In modalità multi-monitor estesa (target_monitor_index == -1):
+        1. Fast-path: se (x, y) è contenuto in un monitor attivo, restituisce (x, y) istantaneamente.
+        2. Continuous Boundary Stitching: se il punto è in una dead-zone tra monitor sfalsati,
+           verifica se X cade nello span orizzontale di un monitor (o Y nello span verticale)
+           e proietta lungo l'asse ortogonale, eliminando l'intrappolamento ai bordi ('Boundary Trap').
+        3. Corner / Outer dead-zone: proietta sul perimetro del monitor euclideamente più vicino
+           senza creare closure, lambdas o allocazioni heap a 60-120 Hz.
         """
-        if self.monitors:
-            for m in self.monitors:
-                if m.contains(x, y):
-                    return float(x), float(y)
-            closest = min(self.monitors, key=lambda m: m.distance_to(x, y))
-            return closest.clamp(x, y)
+        fx = float(x)
+        fy = float(y)
 
-        # Fallback desktop virtuale standard
-        clamped_x = max(self.vx, min(self.vx + self.vw - 1.0, float(x)))
-        clamped_y = max(self.vy, min(self.vy + self.vh - 1.0, float(y)))
+        # 1. Vincolo clinico su monitor specifico
+        if 0 <= self.target_monitor_index < len(self.monitors):
+            return self.monitors[self.target_monitor_index].clamp(fx, fy)
+
+        if not self.monitors:
+            clamped_x = max(self.vx, min(self.vx + self.vw - 1.0, fx))
+            clamped_y = max(self.vy, min(self.vy + self.vh - 1.0, fy))
+            return clamped_x, clamped_y
+
+        # 2. Fast-path O(N): verifica contenimento diretto a zero allocazioni
+        for m in self.monitors:
+            if m.left <= fx < m.right and m.top <= fy < m.bottom:
+                return fx, fy
+
+        # 3. Continuous Boundary Stitching (Anti-Trap Projection)
+        # 3a. Controllo allineamento orizzontale
+        best_y_mon = None
+        min_y_dist = 1e9
+        for m in self.monitors:
+            if m.left <= fx < m.right:
+                clamped_y_cand = max(float(m.top), min(float(m.bottom - 1), fy))
+                dist = abs(fy - clamped_y_cand)
+                if dist < min_y_dist:
+                    min_y_dist = dist
+                    best_y_mon = m
+
+        if best_y_mon is not None:
+            clamped_y = max(float(best_y_mon.top), min(float(best_y_mon.bottom - 1), fy))
+            return fx, clamped_y
+
+        # 3b. Controllo allineamento verticale
+        best_x_mon = None
+        min_x_dist = 1e9
+        for m in self.monitors:
+            if m.top <= fy < m.bottom:
+                clamped_x_cand = max(float(m.left), min(float(m.right - 1), fx))
+                dist = abs(fx - clamped_x_cand)
+                if dist < min_x_dist:
+                    min_x_dist = dist
+                    best_x_mon = m
+
+        if best_x_mon is not None:
+            clamped_x = max(float(best_x_mon.left), min(float(best_x_mon.right - 1), fx))
+            return clamped_x, fy
+
+        # 3c. Angolo esterno / Dead-zone diagonale: monitor più vicino senza lambda
+        closest_mon = None
+        min_dist_sq = 1e18
+        for m in self.monitors:
+            dx = max(0.0, float(m.left) - fx, fx - float(m.right - 1))
+            dy = max(0.0, float(m.top) - fy, fy - float(m.bottom - 1))
+            dist_sq = dx * dx + dy * dy
+            if dist_sq < min_dist_sq:
+                min_dist_sq = dist_sq
+                closest_mon = m
+
+        if closest_mon is not None:
+            return closest_mon.clamp(fx, fy)
+
+        clamped_x = max(self.vx, min(self.vx + self.vw - 1.0, fx))
+        clamped_y = max(self.vy, min(self.vy + self.vh - 1.0, fy))
         return clamped_x, clamped_y
 
     def move_to_pixel(self, x: float, y: float):

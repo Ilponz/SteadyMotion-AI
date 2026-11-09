@@ -855,8 +855,12 @@ class SteadyMotionApp:
                         self.clinical_logger.record_cursor_movement(snap_x, snap_y)
 
                         # Gestione Scorrimento Continuo ai Bordi (Edge Scrolling)
-                        mon_top, mon_bottom = self.mouse.vy, self.mouse.vy + self.mouse.vh
+                        cur_mon = self.mouse.get_monitor_at(snap_x, snap_y)
+                        mon_top = cur_mon.top if cur_mon else int(self.mouse.vy)
+                        mon_bottom = cur_mon.bottom if cur_mon else int(self.mouse.vy + self.mouse.vh)
+
                         is_edge_scrolling = self.edge_scrolling.update(
+                            cursor_x=snap_x,
                             cursor_y=snap_y,
                             monitor_top=mon_top,
                             monitor_bottom=mon_bottom,
