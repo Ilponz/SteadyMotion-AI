@@ -219,6 +219,7 @@ class SteadyMotionApp:
             on_open_keyboard=self.open_floating_keyboard,
             on_open_diagnostics=self.open_diagnostic_window,
             on_open_palette=self.open_action_palette,
+            on_open_fitts=self.open_fitts_assessment_window,
             on_switch_camera=self.switch_camera_source,
             clinical_logger=self.clinical_logger,
             license_manager=self.license_manager,
@@ -335,6 +336,15 @@ class SteadyMotionApp:
             parent=self.root,
             pose_provider=self.get_current_pose,
             on_calibration_complete=self._on_rom_calibration_complete,
+        )
+
+    def open_fitts_assessment_window(self):
+        """Apre la finestra modale a schermo intero per la valutazione clinica ISO 9241-9."""
+        from gui.fitts_window import FittsAssessmentWindow
+        FittsAssessmentWindow(
+            parent=self.root,
+            on_assessment_complete=lambda summary: self.clinical_logger.record_fitts_assessment(summary),
+            audio_feedback=self.audio_feedback,
         )
 
     def _on_rom_calibration_complete(self, gains, stats):

@@ -85,6 +85,7 @@ class ControlPanel:
         on_open_keyboard: Optional[Callable[[], None]] = None,
         on_open_diagnostics: Optional[Callable[[], None]] = None,
         on_open_palette: Optional[Callable[[], None]] = None,
+        on_open_fitts: Optional[Callable[[], None]] = None,
         on_switch_camera: Optional[Callable[[int], bool]] = None,
         clinical_logger: Optional[Any] = None,
         license_manager: Optional[LicenseManager] = None,
@@ -101,6 +102,7 @@ class ControlPanel:
         self.on_open_keyboard = on_open_keyboard
         self.on_open_diagnostics = on_open_diagnostics
         self.on_open_palette = on_open_palette
+        self.on_open_fitts = on_open_fitts
         self.on_switch_camera = on_switch_camera
         self.clinical_logger = clinical_logger
 
@@ -410,7 +412,18 @@ class ControlPanel:
             hover_color="#7c3aed",
             command=self.on_open_calibration if self.on_open_calibration else lambda: None,
         )
-        btn_w_rom.pack(fill="x", padx=8, pady=(2, 6))
+        btn_w_rom.pack(fill="x", padx=8, pady=(2, 4))
+
+        btn_w_fitts = ctk.CTkButton(
+            step3b,
+            text="🎯 Valutazione Clinica ISO 9241-9 (Throughput Fitts)",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            height=30,
+            fg_color="#0284c7",
+            hover_color="#0369a1",
+            command=self.on_open_fitts if self.on_open_fitts else lambda: None,
+        )
+        btn_w_fitts.pack(fill="x", padx=8, pady=(2, 6))
 
         # Step 4: Clic preferito
         step4 = ctk.CTkFrame(self.tab_wizard, corner_radius=8)

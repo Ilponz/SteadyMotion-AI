@@ -444,7 +444,7 @@ class WindowsMouseController:
             user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
 
     def send_key_event(self, vk_code: int):
-        """Invia codici di tasto virtuale (es. VK_BACK, VK_RETURN, VK_SPACE)."""
+        """Invia codici di tasto virtuale (es. VK_BACK, VK_RETURN, VK_SPACE, VK_TAB, VK_ESCAPE)."""
         extra = self.signature_extra
         KEYEVENTF_KEYUP = 0x0002
         ki_down = KEYBDINPUT(vk_code, 0, 0, 0, extra)
@@ -455,3 +455,16 @@ class WindowsMouseController:
 
         inputs = (INPUT * 2)(inp_down, inp_up)
         user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
+
+    def send_key_combination(self, modifier_vk: int, key_vk: int):
+        """Invia una combinazione di tasti con modificatore (es. Ctrl+C, Ctrl+V, Ctrl+A, Alt+Tab)."""
+        extra = self.signature_extra
+        KEYEVENTF_KEYUP = 0x0002
+
+        m_down = INPUT(type=1, union=_INPUTunion(ki=KEYBDINPUT(modifier_vk, 0, 0, 0, extra)))
+        k_down = INPUT(type=1, union=_INPUTunion(ki=KEYBDINPUT(key_vk, 0, 0, 0, extra)))
+        k_up = INPUT(type=1, union=_INPUTunion(ki=KEYBDINPUT(key_vk, 0, KEYEVENTF_KEYUP, 0, extra)))
+        m_up = INPUT(type=1, union=_INPUTunion(ki=KEYBDINPUT(modifier_vk, 0, KEYEVENTF_KEYUP, 0, extra)))
+
+        inputs = (INPUT * 4)(m_down, k_down, k_up, m_up)
+        user32.SendInput(4, inputs, ctypes.sizeof(INPUT))

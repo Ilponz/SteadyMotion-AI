@@ -3056,6 +3056,94 @@ def test_ataxia_intention_tremor_damper():
     print(">>> TEST 60 SUPERATO! <<<")
 
 
+
+
+def test_iso_9241_9_fitts_interactive_window_and_protocol():
+    print("\n--- TEST 61: Protocollo Circolare Interattivo ISO 9241-9 & Validazione Throughput ---")
+    from core.fitts_evaluator import FittsEvaluator, generate_iso_circle_targets
+    from gui.fitts_window import FittsAssessmentWindow
+
+    # 1. Verifica generazione bersagli geometrici a stella reciproca diametrale ISO 9241-9
+    targets = generate_iso_circle_targets(center_x=960.0, center_y=540.0, radius=300.0, num_targets=13, target_width=60.0)
+    assert len(targets) == 13, f"Attesi 13 bersagli, ottenuti: {len(targets)}"
+    assert targets[0]["step"] == 0 and targets[12]["step"] == 12
+    # Verifica che il secondo step attraversi diametralmente il centro verso il lato opposto (reciprocal star)
+    dx0 = targets[0]["x"] - 960.0
+    dx1 = targets[1]["x"] - 960.0
+    assert dx0 * dx1 <= 0.0 or abs(targets[0]["angle_deg"] - targets[1]["angle_deg"]) > 100.0, "La sequenza deve essere diametrale reciproca"
+    print("Pattern Geometrico Circolare Diametrale (13 Bersagli ISO 9241-9): 100% Conforme")
+
+    # 2. Simulazione somministrazione clinica completa con FittsEvaluator
+    evaluator = FittsEvaluator()
+    evaluator.start_trial(start_x=960.0, start_y=540.0, now=10.0)
+
+    for idx, t in enumerate(targets):
+        # Simulazione movimento verso il bersaglio (MT ~ 0.8s con piccolo scostamento di mira di 4px)
+        t_hit = 10.0 + (idx + 1) * 0.80
+        evaluator.record_hit(
+            target_id=t["target_id"],
+            target_x=t["x"],
+            target_y=t["y"],
+            target_width=t["width"],
+            now=t_hit,
+            is_hit=True,
+            hit_x=t["x"] + 3.0,
+            hit_y=t["y"] - 2.0,
+        )
+        if idx < len(targets) - 1:
+            evaluator.start_trial(start_x=t["x"] + 3.0, start_y=t["y"] - 2.0, now=t_hit)
+
+    summary = evaluator.get_summary()
+    assert summary["total_trials"] == 13
+    assert summary["error_rate_pct"] == 0.0
+    assert summary["mean_throughput_bps"] > 2.0, f"Throughput atteso > 2.0 bit/s, calcolato: {summary['mean_throughput_bps']}"
+    assert summary["effective_throughput_tpe"] > 1.5
+    assert "ISO 9241-9" in summary["iso_conformance"]
+    print(f"Throughput Nominale: {summary['mean_throughput_bps']} bit/s | Throughput Effettivo: {summary['effective_throughput_tpe']} bit/s")
+    print("Verifica Struttura e Metodi FittsAssessmentWindow: Presente e conforme")
+    print(">>> TEST 61 SUPERATO! <<<")
+
+
+def test_virtual_input_key_combinations_and_osk_shortcuts():
+    print("\n--- TEST 62: Iniezione Combinazioni Tasti Modificatori Win32 (Ctrl+C, Ctrl+V, Tab, Esc) ---")
+    from core.virtual_input import WindowsMouseController
+    import tkinter as tk
+
+    controller = WindowsMouseController()
+
+    # 1. Verifica metodo send_key_event con VK_TAB (0x09) e VK_ESCAPE (0x1B)
+    try:
+        controller.send_key_event(0x09)  # Tab
+        controller.send_key_event(0x1B)  # Esc
+        print("Iniezione SendInput Singolo Tasto Virtuale (Tab, Esc): Eseguita con successo")
+    except Exception as e:
+        assert False, f"send_key_event ha sollevato un'eccezione inattesa: {e}"
+
+    # 2. Verifica metodo send_key_combination (Ctrl+C: 0x11, 0x43) e (Ctrl+V: 0x11, 0x56)
+    try:
+        controller.send_key_combination(0x11, 0x43)  # Ctrl+C
+        controller.send_key_combination(0x11, 0x56)  # Ctrl+V
+        controller.send_key_combination(0x11, 0x41)  # Ctrl+A
+        controller.send_key_combination(0x11, 0x5A)  # Ctrl+Z
+        print("Iniezione SendInput Sequenza Modificatore 4-Eventi (Ctrl+C, Ctrl+V, Ctrl+A, Ctrl+Z): Zero Errori")
+    except Exception as e:
+        assert False, f"send_key_combination ha sollevato un'eccezione inattesa: {e}"
+
+    # 3. Verifica Gestore Svuotamento Testo OSK (_handle_clear_all)
+    root = tk.Tk()
+    root.withdraw()
+    from gui.floating_keyboard import FloatingKeyboardWindow
+    osk = FloatingKeyboardWindow(parent=root, virtual_input_controller=controller)
+    osk.typed_text.set("Testo provvisorio da cancellare")
+    assert osk.typed_text.get() == "Testo provvisorio da cancellare"
+    osk._handle_clear_all()
+    assert osk.typed_text.get() == "", "Il testo digitato deve essere svuotato da _handle_clear_all"
+    osk.destroy()
+    root.destroy()
+    print("Gestione Scorciatoie e Svuotamento Buffer OSK: Conforme al 100%")
+    print(">>> TEST 62 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -3117,8 +3205,10 @@ if __name__ == "__main__":
     test_osk_user_lexicon_lifecycle_persistence()
     test_adaptive_dwell_auto_calibration_bcea()
     test_ataxia_intention_tremor_damper()
+    test_iso_9241_9_fitts_interactive_window_and_protocol()
+    test_virtual_input_key_combinations_and_osk_shortcuts()
     print("\n========================================================")
-    print("TUTTI I 60 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 62 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

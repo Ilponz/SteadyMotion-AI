@@ -294,6 +294,54 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         )
         btn_enter.pack(side="left", fill="both", padx=2)
 
+        # Riga Modificatori e Scorciatoie di Sistema Win32
+        f_sys = ctk.CTkFrame(self.tab_letters, fg_color="transparent")
+        f_sys.pack(fill="x", expand=True, pady=1)
+
+        sys_keys = [
+            ("↹ TAB", lambda: self._handle_virtual_key(0x09)),
+            ("ESC", lambda: self._handle_virtual_key(0x1B)),
+            ("📋 COPIA", lambda: self._handle_key_combo(0x11, 0x43)),      # Ctrl+C
+            ("📥 INCOLLA", lambda: self._handle_key_combo(0x11, 0x56)),    # Ctrl+V
+            ("🔘 SELEZIONA", lambda: self._handle_key_combo(0x11, 0x41)),  # Ctrl+A
+            ("↩ ANNULLA", lambda: self._handle_key_combo(0x11, 0x5A)),    # Ctrl+Z
+            ("🧹 PULISCI", self._handle_clear_all),
+        ]
+        for label, cmd in sys_keys:
+            btn = ctk.CTkButton(
+                f_sys,
+                text=label,
+                font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+                fg_color="#1E293B",
+                hover_color="#0284C7",
+                height=28,
+                command=cmd,
+            )
+            btn.pack(side="left", expand=True, fill="both", padx=1)
+
+    def _handle_virtual_key(self, vk_code: int):
+        if self.virtual_input:
+            try:
+                self.virtual_input.send_key_event(vk_code)
+            except Exception:
+                pass
+        if hasattr(self, "audio_feedback") and self.audio_feedback:
+            self.audio_feedback.play("click")
+
+    def _handle_key_combo(self, mod_vk: int, key_vk: int):
+        if self.virtual_input and hasattr(self.virtual_input, "send_key_combination"):
+            try:
+                self.virtual_input.send_key_combination(mod_vk, key_vk)
+            except Exception:
+                pass
+        if hasattr(self, "audio_feedback") and self.audio_feedback:
+            self.audio_feedback.play("click")
+
+    def _handle_clear_all(self):
+        self.typed_text.set("")
+        if hasattr(self, "audio_feedback") and self.audio_feedback:
+            self.audio_feedback.play("click")
+
     def _build_symbols_tab(self):
         rows = [
             ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
