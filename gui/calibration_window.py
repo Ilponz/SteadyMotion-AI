@@ -338,7 +338,10 @@ class CalibrationWindow(ctk.CTkToplevel):
             diag_text = "✅ Mobilità Simmetrica ed Equilibrata: risposta uniforme su tutti i 4 quadranti dello schermo."
             diag_color = "#22C55E"
 
+        apply_dwell_var = tk.BooleanVar(value=True)
         if self.center_bcea_result is not None:
+            rec_dwell = self.center_bcea_result.recommended_dwell_sec
+            rec_tol = self.center_bcea_result.recommended_tolerance_px
             bcea_colors = {
                 "ECCELLENTE": "#22C55E",
                 "BUONA": "#38BDF8",
@@ -348,12 +351,26 @@ class CalibrationWindow(ctk.CTkToplevel):
             b_col = bcea_colors.get(self.center_bcea_result.stability_grade, "#94A3B8")
             bcea_card = ctk.CTkFrame(report_frame, fg_color="#0F172A", corner_radius=10)
             bcea_card.pack(fill="x", padx=40, pady=(0, 10))
+            
+            top_line = ctk.CTkFrame(bcea_card, fg_color="transparent")
+            top_line.pack(fill="x", padx=15, pady=(6, 2))
             ctk.CTkLabel(
-                bcea_card,
-                text=f"🎯 Stabilità Posturale BCEA (Fissazione Neutrale): {self.center_bcea_result.bcea_68:.3f} deg²  —  Grado: {self.center_bcea_result.stability_grade}",
+                top_line,
+                text=f"🎯 Stabilità Posturale BCEA: {self.center_bcea_result.bcea_68:.3f} deg²  —  Grado: {self.center_bcea_result.stability_grade}",
                 font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
                 text_color=b_col,
-            ).pack(pady=8, padx=15)
+            ).pack(side="left")
+
+            bot_line = ctk.CTkFrame(bcea_card, fg_color="transparent")
+            bot_line.pack(fill="x", padx=15, pady=(2, 6))
+            chk_dwell = ctk.CTkCheckBox(
+                bot_line,
+                text=f"⏱ Applica Taratura Dwell Consigliata: {rec_dwell:.2f} s (Tolleranza: {rec_tol:.0f} px)",
+                variable=apply_dwell_var,
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                text_color="#38BDF8",
+            )
+            chk_dwell.pack(side="left")
 
         diag_label = ctk.CTkLabel(
             report_frame,
@@ -368,6 +385,10 @@ class CalibrationWindow(ctk.CTkToplevel):
         btn_frame.pack(pady=20)
 
         def apply_and_exit():
+            if self.center_bcea_result is not None:
+                rom_stats["apply_recommended_dwell"] = bool(apply_dwell_var.get())
+                rom_stats["recommended_dwell"] = self.center_bcea_result.recommended_dwell_sec
+                rom_stats["recommended_tolerance"] = self.center_bcea_result.recommended_tolerance_px
             self.on_calibration_complete(gains, rom_stats)
             self.destroy()
 

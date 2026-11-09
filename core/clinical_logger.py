@@ -70,7 +70,10 @@ class ClinicalSessionLogger:
         # Metriche Stabilità Posturale BCEA (Bivariate Contour Ellipse Area)
         self.last_bcea_68: Optional[float] = None
         self.last_bcea_95: Optional[float] = None
-        self.last_stability_grade: str = "NON_VALUTATA" 
+        self.last_stability_grade: str = "NON_VALUTATA"
+        self.adapted_dwell_time: Optional[float] = None
+        self.adapted_tolerance_px: Optional[float] = None
+        self.dwell_adaptation_source: Optional[str] = None 
 
     def set_tracking_state(self, is_active: bool, now: Optional[float] = None):
         """Aggiorna lo stato di tracciamento attivo vs standby accumulando i tempi trascorsi."""
@@ -157,6 +160,12 @@ class ClinicalSessionLogger:
         self.last_bcea_95 = float(bcea_95)
         self.last_stability_grade = str(stability_grade)
 
+    def record_dwell_adaptation(self, dwell_time: float, tolerance_radius: float, source: str = "BCEA_CALIBRATION"):
+        """Registra l'auto-taratura dei parametri di sosta Dwell adattati al paziente."""
+        self.adapted_dwell_time = float(dwell_time)
+        self.adapted_tolerance_px = float(tolerance_radius)
+        self.dwell_adaptation_source = str(source)
+
     def record_fitts_assessment(self, fitts_summary: Dict[str, Any]):
         """
         Registra una valutazione standardizzata ISO 9241-9 / Legge di Fitts.
@@ -238,6 +247,8 @@ class ClinicalSessionLogger:
                 "bcea_68_deg2": self.last_bcea_68,
                 "bcea_95_deg2": self.last_bcea_95,
                 "grade": self.last_stability_grade,
+                "adapted_dwell_time_sec": self.adapted_dwell_time,
+                "adapted_tolerance_px": self.adapted_tolerance_px,
             },
         }
 
@@ -280,6 +291,7 @@ class ClinicalSessionLogger:
 | **BCEA 68% (1 Deviazione Standard)** | **{self.last_bcea_68:.3f} deg²** | Area ellittica di dispersione posturale |
 | **BCEA 95% (Intervallo Confidenza)** | **{self.last_bcea_95:.3f} deg²** | Estensione del tremore/scostamento massimo |
 | **Grado di Stabilità Posturale** | **{self.last_stability_grade}** | Indice oggettivo di controllo motorio |
+| **Dwell Ottimizzato Automatico** | {f"{self.adapted_dwell_time:.2f} s (tol: {self.adapted_tolerance_px:.0f} px)" if self.adapted_dwell_time else "Non calibrato"} | Parametri di sosta adattati al paziente |
 """
 
         md = f"""# 🏥 STEADYMOTION AI — RELAZIONE CLINICA DI SESSIONE

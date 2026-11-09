@@ -34,6 +34,7 @@ from core.audio_feedback import AudioFeedback
 from core.gesture_trigger import GestureTrigger
 from core.magnetic_snapping import MagneticSnapper
 from core.wheelchair_jolt import WheelchairJoltFilter
+from core.ataxia_filter import AtaxiaIntentionDamper
 from core.tracker_engine import FaceTrackerEngine
 from core.utils import get_resource_path
 from core.virtual_input import (
@@ -121,6 +122,9 @@ class SteadyMotionApp:
 
         # Filtro Anti-Sobbalzo Meccanico per Carrozzine Elettroniche (Wheelchair Seismic Jolt Absorber)
         self.wheelchair_jolt = WheelchairJoltFilter(is_enabled=True)
+
+        # Smorzatore Dinamico per Atassia Cerebellare (Tremore Intenzionale Terminale 2.5 - 4.5 Hz)
+        self.ataxia_damper = AtaxiaIntentionDamper(is_enabled=True)
 
         # Monitor Ergonomico & Rilevamento Affaticamento Muscolare Cervicale
         self.ergonomics_monitor = ErgonomicsMonitor()
@@ -337,11 +341,26 @@ class SteadyMotionApp:
         self.apply_asymmetric_gains(gains)
         if isinstance(stats, dict) and "bcea" in stats:
             b = stats["bcea"]
+            bcea_68 = float(b.get("bcea_68", 0.0))
+            bcea_95 = float(b.get("bcea_95", 0.0))
+            grade = str(b.get("stability_grade", "NON_VALUTATA"))
             self.clinical_logger.record_bcea_stability(
-                bcea_68=float(b.get("bcea_68", 0.0)),
-                bcea_95=float(b.get("bcea_95", 0.0)),
-                stability_grade=str(b.get("stability_grade", "NON_VALUTATA")),
+                bcea_68=bcea_68,
+                bcea_95=bcea_95,
+                stability_grade=grade,
             )
+            # Applicazione automatica parametri Dwell ottimizzati in base alla stabilità
+            if stats.get("apply_recommended_dwell"):
+                new_dwell = float(stats.get("recommended_dwell", self.dwell_clicker.dwell_time))
+                new_tol = float(stats.get("recommended_tolerance", self.dwell_clicker.tolerance_radius))
+                self.dwell_clicker.dwell_time = new_dwell
+                self._base_dwell_time = new_dwell
+                self.dwell_clicker.tolerance_radius = new_tol
+                self.clinical_logger.record_dwell_adaptation(
+                    dwell_time=new_dwell,
+                    tolerance_radius=new_tol,
+                    source="BCEA_ROM_CALIBRATION",
+                )
 
     def open_floating_keyboard(self):
         """Apre o porta in primo piano la tastiera assistiva flottante."""
@@ -537,6 +556,7 @@ class SteadyMotionApp:
                 self.tracker.set_adaptive_bias(0.0, 0.0)
                 self.ergonomics_monitor.reset_reference(res.yaw, res.pitch, res.roll)
         self.dsp_filter.reset()
+        self.ataxia_damper.reset()
         self.magnetic_snapper.reset()
         self.dwell_clicker.cancel()
 
@@ -637,7 +657,8 @@ class SteadyMotionApp:
                     target_py = self.mouse.vy + norm_y * self.mouse.vh
 
                     filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_now)
-                    snap_x, snap_y = self.magnetic_snapper.apply_snap(filt_x, filt_y, t_now)
+                    atax_x, atax_y, _ = self.ataxia_damper.process(filt_x, filt_y, t_now)
+                    snap_x, snap_y = self.magnetic_snapper.apply_snap(atax_x, atax_y, t_now)
 
                     act_x, act_y = self.mouse.get_cursor_pos()
                     is_overridden = self.copilot.check_override(act_x, act_y, t_now)
@@ -771,7 +792,8 @@ class SteadyMotionApp:
                     target_py = self.mouse.vy + norm_y * self.mouse.vh
 
                     filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_now)
-                    snap_x, snap_y = self.magnetic_snapper.apply_snap(filt_x, filt_y, t_now)
+                    atax_x, atax_y, _ = self.ataxia_damper.process(filt_x, filt_y, t_now)
+                    snap_x, snap_y = self.magnetic_snapper.apply_snap(atax_x, atax_y, t_now)
 
                     act_x, act_y = self.mouse.get_cursor_pos()
                     is_overridden = self.copilot.check_override(act_x, act_y, t_now)

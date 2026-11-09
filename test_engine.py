@@ -2940,6 +2940,122 @@ def test_osk_user_lexicon_lifecycle_persistence():
         print(">>> TEST 58 SUPERATO! <<<")
 
 
+
+
+def test_adaptive_dwell_auto_calibration_bcea():
+    print("\n--- TEST 59: Auto-Taratura Adattiva del Dwell Time basata su BCEA & Stabilità Posturale ---")
+    from core.bcea_metric import BCEACalculator
+    from core.clinical_logger import ClinicalSessionLogger
+    from core.dwell_clicker import DwellClicker
+
+    # 1. Test raccomandazioni per 4 classi cliniche
+    rec_exc, tol_exc, _ = BCEACalculator.recommend_dwell_parameters(0.08)
+    assert rec_exc == 0.48 and tol_exc == 18.0, f"Atteso 0.48s/18px per stabilità eccellente, ottenuto: {rec_exc}/{tol_exc}"
+
+    rec_good, tol_good, _ = BCEACalculator.recommend_dwell_parameters(0.45)
+    assert rec_good == 0.58 and tol_good == 22.0, f"Atteso 0.58s/22px per stabilità buona, ottenuto: {rec_good}/{tol_good}"
+
+    rec_mod, tol_mod, _ = BCEACalculator.recommend_dwell_parameters(1.10)
+    assert rec_mod == 0.72 and tol_mod == 28.0, f"Atteso 0.72s/28px per stabilità moderata, ottenuto: {rec_mod}/{tol_mod}"
+
+    rec_inst, tol_inst, _ = BCEACalculator.recommend_dwell_parameters(2.90)
+    assert rec_inst == 0.90 and tol_inst == 34.0, f"Atteso 0.90s/34px per atassia/instabile, ottenuto: {rec_inst}/{tol_inst}"
+    print("Raccomandazioni Dwell su 4 Classi BCEA: 100% Conforme")
+
+    # 2. Simulazione Calibrazione BCEA con stabilità eccellente e aggiornamento DwellClicker
+    bcea_calc = BCEACalculator()
+    for _ in range(25):
+        bcea_calc.add_sample(0.05, -0.04)
+    res = bcea_calc.compute()
+    assert res.recommended_dwell_sec == 0.48
+    assert res.recommended_tolerance_px == 18.0
+
+    dwell = DwellClicker(dwell_time=0.65, tolerance_radius=24.0)
+    assert dwell.dwell_time == 0.65
+    # Applicazione automatica
+    dwell.dwell_time = res.recommended_dwell_sec
+    dwell.tolerance_radius = res.recommended_tolerance_px
+    assert dwell.dwell_time == 0.48
+    assert dwell.tolerance_radius == 18.0
+
+    # 3. Registrazione Cartella Clinica
+    logger = ClinicalSessionLogger()
+    logger.record_bcea_stability(res.bcea_68, res.bcea_95, res.stability_grade)
+    logger.record_dwell_adaptation(dwell.dwell_time, dwell.tolerance_radius, source="BCEA_CALIBRATION")
+
+    summary = logger.get_session_summary()
+    assert summary["bcea_stability"]["adapted_dwell_time_sec"] == 0.48
+    assert summary["bcea_stability"]["adapted_tolerance_px"] == 18.0
+
+    md = logger.generate_markdown_report()
+    assert "0.48 s" in md
+    print("Integrazione Cartella Clinica & Auto-Taratura Dwell: Conforme al 100%")
+    print(">>> TEST 59 SUPERATO! <<<")
+
+
+def test_ataxia_intention_tremor_damper():
+    print("\n--- TEST 60: Smorzatore Dinamico per Atassia Cerebellare (Tremore Intenzionale Terminale 3.0 Hz) ---")
+    import math
+    from core.ataxia_filter import AtaxiaIntentionDamper
+
+    damper = AtaxiaIntentionDamper(window_duration_sec=0.45, speed_threshold_px=320.0)
+
+    # 1. Movimento balistico rapido unidirezionale (nessun tremore)
+    t0 = 50.0
+    for i in range(20):
+        t = t0 + i * 0.016
+        x = 100.0 + i * 15.0  # ~930 px/s
+        y = 200.0
+        out_x, out_y, score = damper.process(x, y, t)
+        assert score == 0.0, "Nessun tremore deve essere rilevato durante sweep balistico"
+        assert abs(out_x - x) < 1e-4 and abs(out_y - y) < 1e-4
+
+    print("Traiettoria Balistica ad Alta Velocit\u00e0: 100% Trasparenza, zero lag")
+
+    # 2. Arrivo sul bersaglio e comparsa di tremore intenzionale terminale a 3.0 Hz (dismetria/oscillazione)
+    damper.reset()
+    t_start = 100.0
+    target_center_x = 600.0
+    target_center_y = 400.0
+    raw_amplitudes = []
+    damped_amplitudes = []
+
+    # Esegui 35 campioni (~550 ms) di oscillazione sinusoidale a 3 Hz con ampiezza 35 px
+    for i in range(35):
+        t = t_start + i * 0.016
+        # Oscillazione 3 Hz intorno al centro target
+        osc = 35.0 * math.sin(2.0 * math.pi * 3.0 * (t - t_start))
+        raw_x = target_center_x + osc
+        raw_y = target_center_y
+        out_x, out_y, score = damper.process(raw_x, raw_y, t)
+
+        if i > 20:  # Dopo che la finestra circolare ha accumulato le inversioni di segno
+            raw_amplitudes.append(abs(raw_x - target_center_x))
+            damped_amplitudes.append(abs(out_x - target_center_x))
+
+    assert damper.is_tremor_active is True, "Il filtro avrebbe dovuto attivare lo smorzatore atassico"
+    assert damper.tremor_score > 0.40, f"Tremor score atteso > 0.40, trovato: {damper.tremor_score}"
+    assert 2.0 <= damper.measured_frequency_hz <= 4.5, f"Frequenza stimata {damper.measured_frequency_hz} Hz fuori range atassico (2-4.5 Hz)"
+
+    mean_raw_dev = sum(raw_amplitudes) / len(raw_amplitudes)
+    mean_damped_dev = sum(damped_amplitudes) / len(damped_amplitudes)
+    reduction_pct = (1.0 - mean_damped_dev / mean_raw_dev) * 100.0
+    print(f"Tremore Intenzionale Rilevato: freq={damper.measured_frequency_hz:.1f} Hz, score={damper.tremor_score:.2f}")
+    print(f"Deviazione grezza: {mean_raw_dev:.1f} px -> Deviazione smorzata: {mean_damped_dev:.1f} px (Abbattimento: {reduction_pct:.1f}%)")
+    assert reduction_pct >= 45.0, f"Abbattimento tremore {reduction_pct:.1f}% inferiore al target minimo 45%"
+
+    # 3. Uscita balistica: il paziente decide di cambiare target e muove rapidamente il capo
+    t_exit = t_start + 0.60
+    for i in range(5):
+        t = t_exit + i * 0.016
+        out_x, out_y, score = damper.process(target_center_x + 100.0 + i * 30.0, target_center_y, t)
+
+    assert damper.is_tremor_active is False, "Lo smorzatore deve disattivarsi istantaneamente su movimento volontario rapido"
+    assert damper.tremor_score == 0.0, "Score tremore deve azzerarsi su uscita balistica"
+    print("Sblocco Balistico Istantaneo: Confermato al 100%")
+    print(">>> TEST 60 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -2999,8 +3115,10 @@ if __name__ == "__main__":
     test_wheelchair_jolt_dwell_cancellation_and_telemetry()
     test_rom_calibration_bcea_calculation_and_clinical_logging()
     test_osk_user_lexicon_lifecycle_persistence()
+    test_adaptive_dwell_auto_calibration_bcea()
+    test_ataxia_intention_tremor_damper()
     print("\n========================================================")
-    print("TUTTI I 58 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 60 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

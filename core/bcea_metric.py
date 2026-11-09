@@ -36,6 +36,8 @@ class BCEAResult(NamedTuple):
     bcea_68: float
     bcea_95: float
     stability_grade: str  # "ECCELLENTE", "BUONA", "MODERATA", "INSTABILE"
+    recommended_dwell_sec: float = 0.65
+    recommended_tolerance_px: float = 24.0
 
 
 class BCEACalculator:
@@ -43,6 +45,21 @@ class BCEACalculator:
 
     K_68 = 1.13943428  # -ln(1 - 0.68)
     K_95 = 2.99573227  # -ln(1 - 0.95)
+
+    @staticmethod
+    def recommend_dwell_parameters(bcea_68: float) -> Tuple[float, float, str]:
+        """
+        Calcola i parametri ottimali di sosta Dwell in base alla dispersione posturale BCEA:
+        Restituisce (recommended_dwell_sec: float, recommended_tolerance_px: float, rationale: str)
+        """
+        if bcea_68 <= 0.20:
+            return 0.48, 18.0, "Stabilità posturale eccellente: sosta rapida ad alta efficienza"
+        elif bcea_68 <= 0.60:
+            return 0.58, 22.0, "Buona stabilità: bilanciamento ottimale tra velocità e controllo"
+        elif bcea_68 <= 1.50:
+            return 0.72, 28.0, "Stabilità moderata / lieve tremore: sosta protetta per prevenire misclick"
+        else:
+            return 0.90, 34.0, "Instabilità marcata / atassia: massima tolleranza e sosta estesa anti-spasmo"
 
     def __init__(self):
         self.reset()
@@ -78,6 +95,8 @@ class BCEACalculator:
                 bcea_68=0.0,
                 bcea_95=0.0,
                 stability_grade="NON_SUFFICIENTE",
+                recommended_dwell_sec=0.65,
+                recommended_tolerance_px=24.0,
             )
 
         n = float(self.n)
@@ -115,6 +134,8 @@ class BCEACalculator:
         else:
             grade = "INSTABILE"
 
+        rec_dwell, rec_tol, _ = self.recommend_dwell_parameters(bcea_68)
+
         return BCEAResult(
             samples_count=self.n,
             mean_x=mean_x,
@@ -125,4 +146,6 @@ class BCEACalculator:
             bcea_68=bcea_68,
             bcea_95=bcea_95,
             stability_grade=grade,
+            recommended_dwell_sec=rec_dwell,
+            recommended_tolerance_px=rec_tol,
         )
