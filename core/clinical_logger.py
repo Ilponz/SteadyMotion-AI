@@ -51,6 +51,7 @@ class ClinicalSessionLogger:
         self.acoustic_clicks: int = 0
         self.gesture_clicks: int = 0
         self.wheelchair_jolts_absorbed: int = 0
+        self.dystonic_teleports_clamped: int = 0
         self.total_cursor_distance_px: float = 0.0
         self._last_cursor_pos: Optional[Tuple[float, float]] = None
 
@@ -127,6 +128,10 @@ class ClinicalSessionLogger:
     def record_wheelchair_jolt(self):
         """Registra un urto o scossone meccanico da carrozzina assorbito dal filtro."""
         self.wheelchair_jolts_absorbed += 1
+
+    def record_dystonic_teleport_clamped(self):
+        """Registra un teletrasporto del puntatore causato da spasmo distonico frenato con successo."""
+        self.dystonic_teleports_clamped += 1
 
     def record_typing(self, raw_chars: int = 1):
         """Registra caratteri digitati individualmente sulla tastiera."""
@@ -223,6 +228,7 @@ class ClinicalSessionLogger:
                 "acoustic_clicks": self.acoustic_clicks,
                 "gesture_clicks": self.gesture_clicks,
                 "wheelchair_jolts_absorbed": self.wheelchair_jolts_absorbed,
+                "dystonic_teleports_clamped": self.dystonic_teleports_clamped,
                 "emergency_calls_count": self.emergency_calls_count,
             },
             "aac_metrics": {
@@ -317,6 +323,7 @@ class ClinicalSessionLogger:
 | **Clic Vocali / Acustici** | {m['acoustic_clicks']} | Trigger 'pop'/'puff' |
 | **Clic Gesti Facciali Silenziosi** | {m['gesture_clicks']} | FACS blendshapes (mandibola/sorriso) |
 | **Sobbalzi Carrozzina Neutralizzati** | {m.get('wheelchair_jolts_absorbed', 0)} | Filtro sedia a rotelle (dossi/soglie) |
+| **Teletrasporti da Spasmo Frenati** | {m.get('dystonic_teleports_clamped', 0)} | Slew-rate clamp anti-spasmo acuto |
 
 ---
 

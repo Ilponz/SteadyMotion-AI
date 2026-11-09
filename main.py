@@ -35,6 +35,7 @@ from core.gesture_trigger import GestureTrigger
 from core.magnetic_snapping import MagneticSnapper
 from core.wheelchair_jolt import WheelchairJoltFilter
 from core.ataxia_filter import AtaxiaIntentionDamper
+from core.spasm_clamp import SpasmVelocityClamp
 from core.tracker_engine import FaceTrackerEngine
 from core.utils import get_resource_path
 from core.virtual_input import (
@@ -125,6 +126,9 @@ class SteadyMotionApp:
 
         # Smorzatore Dinamico per Atassia Cerebellare (Tremore Intenzionale Terminale 2.5 - 4.5 Hz)
         self.ataxia_damper = AtaxiaIntentionDamper(is_enabled=True)
+
+        # Freno Biometrico Anti-Teletrasporto per Spasmi Distonici e Scatti Acuti
+        self.spasm_clamp = SpasmVelocityClamp(is_enabled=True)
 
         # Monitor Ergonomico & Rilevamento Affaticamento Muscolare Cervicale
         self.ergonomics_monitor = ErgonomicsMonitor()
@@ -567,6 +571,7 @@ class SteadyMotionApp:
                 self.ergonomics_monitor.reset_reference(res.yaw, res.pitch, res.roll)
         self.dsp_filter.reset()
         self.ataxia_damper.reset()
+        self.spasm_clamp.reset()
         self.magnetic_snapper.reset()
         self.dwell_clicker.cancel()
 
@@ -668,7 +673,14 @@ class SteadyMotionApp:
 
                     filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_now)
                     atax_x, atax_y, _ = self.ataxia_damper.process(filt_x, filt_y, t_now)
-                    snap_x, snap_y = self.magnetic_snapper.apply_snap(atax_x, atax_y, t_now)
+                    clamped_x, clamped_y, is_spasm = self.spasm_clamp.clamp(atax_x, atax_y, t_now)
+                    if is_spasm:
+                        if self.dwell_clicker.progress > 0.0:
+                            self.dwell_clicker.cancel()
+                            self.clinical_logger.record_dwell_aborted()
+                        self.clinical_logger.record_spasm_shock()
+                        self.clinical_logger.record_dystonic_teleport_clamped()
+                    snap_x, snap_y = self.magnetic_snapper.apply_snap(clamped_x, clamped_y, t_now)
 
                     act_x, act_y = self.mouse.get_cursor_pos()
                     is_overridden = self.copilot.check_override(act_x, act_y, t_now)
@@ -803,7 +815,14 @@ class SteadyMotionApp:
 
                     filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_now)
                     atax_x, atax_y, _ = self.ataxia_damper.process(filt_x, filt_y, t_now)
-                    snap_x, snap_y = self.magnetic_snapper.apply_snap(atax_x, atax_y, t_now)
+                    clamped_x, clamped_y, is_spasm = self.spasm_clamp.clamp(atax_x, atax_y, t_now)
+                    if is_spasm:
+                        if self.dwell_clicker.progress > 0.0:
+                            self.dwell_clicker.cancel()
+                            self.clinical_logger.record_dwell_aborted()
+                        self.clinical_logger.record_spasm_shock()
+                        self.clinical_logger.record_dystonic_teleport_clamped()
+                    snap_x, snap_y = self.magnetic_snapper.apply_snap(clamped_x, clamped_y, t_now)
 
                     act_x, act_y = self.mouse.get_cursor_pos()
                     is_overridden = self.copilot.check_override(act_x, act_y, t_now)

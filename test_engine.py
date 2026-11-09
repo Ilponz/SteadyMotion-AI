@@ -3144,6 +3144,72 @@ def test_virtual_input_key_combinations_and_osk_shortcuts():
     print(">>> TEST 62 SUPERATO! <<<")
 
 
+
+
+def test_spasm_velocity_clamp_and_teleport_prevention():
+    print("\n--- TEST 63: Freno Biometrico Anti-Teletrasporto per Spasmi Distonici Acuti ---")
+    from core.spasm_clamp import SpasmVelocityClamp
+    from core.dwell_clicker import DwellClicker
+    from core.clinical_logger import ClinicalSessionLogger
+
+    clamp = SpasmVelocityClamp(spasm_speed_threshold_px=4200.0, max_physio_speed_px=1200.0, lockout_duration_sec=0.14)
+    logger = ClinicalSessionLogger()
+    dwell = DwellClicker(dwell_time=0.60, tolerance_radius=20.0)
+
+    # 1. Movimento fisiologico rapido e controllato (v ~ 800 px/s)
+    t0 = 100.0
+    clamp.reset(initial_x=500.0, initial_y=500.0)
+    for i in range(10):
+        t = t0 + i * 0.016
+        x = 500.0 + i * 12.8  # ~800 px/s
+        y = 500.0
+        cx, cy, is_spasm = clamp.clamp(x, y, t)
+        assert is_spasm is False, "Nessun falso positivo durante movimento volontario a 800 px/s"
+        assert abs(cx - x) < 1e-4 and abs(cy - y) < 1e-4
+
+    print("Movimento Fisiologico (800 px/s): 100% Trasparente, zero freno")
+
+    # Dwell comincia a caricare su bersaglio a (615, 500)
+    t_dwell = t0 + 0.16
+    for i in range(10):
+        t = t_dwell + i * 0.03
+        dwell.update(615.0, 500.0, now=t)
+        clamp.clamp(615.0, 500.0, now=t)
+    assert dwell.progress > 0.40
+    print(f"Puntatore su bersaglio: Dwell al {dwell.progress*100:.1f}%")
+
+    # 2. Spasmo distonico acuto violento: il capo scatta di colpo a x=1250 px in 16 ms (v ~ 39.600 px/s)
+    t_spasm = t_dwell + 0.31
+    raw_spasm_x = 1250.0
+    raw_spasm_y = 500.0
+    cx, cy, is_spasm = clamp.clamp(raw_spasm_x, raw_spasm_y, now=t_spasm)
+
+    assert is_spasm is True, "Il filtro doveva intercettare lo scatto distonico non-fisiologico"
+    assert clamp.spasms_neutralized == 1
+    # Il cursore NON deve essere a 1250 px, ma frenato a velocità fisiologica (~19.2 px di avanzamento massimo da 615 px)
+    assert cx <= 670.0, f"Il cursore avrebbe dovuto essere frenato a <= 670 px, trovato a {cx} px"
+    print(f"Scatto Distonico Acuto (v={clamp.peak_spasm_speed:.0f} px/s): Salto grezzo 1250 px frenato a {cx:.1f} px!")
+
+    # Annullamento Dwell e telemetria
+    if is_spasm:
+        if dwell.progress > 0.0:
+            dwell.cancel()
+            logger.record_dwell_aborted()
+        logger.record_spasm_shock()
+        logger.record_dystonic_teleport_clamped()
+
+    assert dwell.progress == 0.0, "Dwell in-flight deve essere resettato a 0.0 per evitare click distonici"
+    assert logger.dystonic_teleports_clamped == 1
+    assert logger.spasm_shock_events == 1
+
+    # 3. Rientro post-spasmo: dopo la finestra di lockout di 140 ms, la velocità torna normale
+    t_end = t_spasm + 0.16
+    cx_end, cy_end, is_spasm_end = clamp.clamp(cx + 2.0, cy, now=t_end)
+    assert is_spasm_end is False, "Lo smorzatore deve rilasciare il controllo al termine della contrazione acuta"
+    print("Rientro Post-Spasmo Continuo: Trasparenza ripristinata con successo")
+    print(">>> TEST 63 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -3207,8 +3273,9 @@ if __name__ == "__main__":
     test_ataxia_intention_tremor_damper()
     test_iso_9241_9_fitts_interactive_window_and_protocol()
     test_virtual_input_key_combinations_and_osk_shortcuts()
+    test_spasm_velocity_clamp_and_teleport_prevention()
     print("\n========================================================")
-    print("TUTTI I 62 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 63 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 
