@@ -73,6 +73,7 @@ class DwellHUD:
         self.last_y: int = -999
         self.last_offset_x: float = 0.0
         self.last_offset_y: float = 0.0
+        self.is_last_danger: bool = False
 
         # Reticolo di Fissazione & Micro-Scatter Bio-Feedback
         self.show_reticle: bool = True
@@ -137,10 +138,13 @@ class DwellHUD:
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         tolerance_radius: float = 24.0,
+        is_danger: bool = False,
     ):
         """Disegna il cerchio di caricamento e il reticolo di stabilità posturale con micro-scatter."""
         if self.root is None or self.canvas is None:
             return
+
+        self.is_last_danger = bool(is_danger)
 
         if progress <= 0.01:
             if self.is_visible:
@@ -184,14 +188,18 @@ class DwellHUD:
         cx = self.size / 2.0
         cy = self.size / 2.0
 
+        # Guida circolare: se in danger zone (chiusura/sistema), evidenzia in rosso allerta
+        guide_color = "#EF4444" if is_danger else self.theme["guide"]
+        guide_width = (self.theme["width_guide"] + 1) if is_danger else self.theme["width_guide"]
+
         # 1. Guida circolare esterna
         self.canvas.create_oval(
             margin,
             margin,
             self.size - margin,
             self.size - margin,
-            outline=self.theme["guide"],
-            width=self.theme["width_guide"],
+            outline=guide_color,
+            width=guide_width,
         )
 
         # 2. Reticolo di Stabilità Posturale & Bio-Feedback Micro-Scatter
@@ -257,15 +265,36 @@ class DwellHUD:
                 width=1,
             )
 
+        # Segnale di sicurezza Danger Zone attivo (Pulsante X / Start Menu)
+        if self.show_reticle and is_danger:
+            tri_y = cy - r_inner * 0.42
+            self.canvas.create_polygon(
+                cx, tri_y - 6,
+                cx + 7, tri_y + 6,
+                cx - 7, tri_y + 6,
+                fill="#EF4444",
+                outline="#FFFFFF",
+                width=1,
+            )
+            self.canvas.create_text(
+                cx, tri_y + 1,
+                text="!",
+                font=("Segoe UI", 7, "bold"),
+                fill="#FFFFFF",
+            )
+
         # 3. Arco di progresso ad alto contrasto
         extent = -int(progress * 359)
-        color = (
-            self.theme["progress_normal"]
-            if progress < 0.85
-            else self.theme["progress_warn"]
-            if progress < 0.95
-            else self.theme["progress_imminent"]
-        )
+        if is_danger:
+            color = "#EF4444" if progress < 0.85 else "#DC2626"
+        else:
+            color = (
+                self.theme["progress_normal"]
+                if progress < 0.85
+                else self.theme["progress_warn"]
+                if progress < 0.95
+                else self.theme["progress_imminent"]
+            )
         self.canvas.create_arc(
             margin,
             margin,

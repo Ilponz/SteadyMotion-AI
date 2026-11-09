@@ -3614,6 +3614,113 @@ def test_audio_feedback_sinusoidal_wav_and_ttl_preemption():
     print(">>> TEST 70 SUPERATO! <<<")
 
 
+
+
+def test_dwell_safety_multi_monitor_and_foreground_window_sniffing():
+    print("\n--- TEST 71: Dwell Safety Guard — Multi-Monitor Aware Danger Zones, Foreground Window Sniffing & HUD Alerting ---")
+    from core.dwell_safety import DwellSafetyGuard
+    from core.virtual_input import DisplayMonitor
+    from gui.hud_overlay import DwellHUD
+
+    # 1. Configurazione Multi-Monitor (Monitor 1: 1920x1080 @ 0,0 | Monitor 2: 1920x1080 @ 1920,0)
+    m1 = DisplayMonitor(hmonitor=1, rect=(0, 0, 1920, 1080), work_rect=(0, 0, 1920, 1040), is_primary=True, device_name="SIM_DISP1")
+    m2 = DisplayMonitor(hmonitor=2, rect=(1920, 0, 3840, 1080), work_rect=(1920, 0, 3840, 1040), is_primary=False, device_name="SIM_DISP2")
+
+    guard = DwellSafetyGuard(is_enabled=True, safety_multiplier=2.0)
+    guard.update_screen_geometry(0, 0, 3840, 1080, monitors=[m1, m2])
+
+    # Verifica protezione pulsante chiusura 'X' su Monitor 1 (x in [1868, 1920], y in [0, 42])
+    is_d1, dwell_d1 = guard.evaluate_dwell_time(1900, 20, base_dwell_time=0.8)
+    assert is_d1 is True and dwell_d1 == 1.6, f"M1 Close non protetta: is_d1={is_d1}, dwell={dwell_d1}"
+    assert guard.last_danger_type == "system_close_or_start"
+
+    # Verifica protezione pulsante chiusura 'X' su Monitor 2 (x in [3788, 3840], y in [0, 42])
+    is_d2, dwell_d2 = guard.evaluate_dwell_time(3820, 20, base_dwell_time=0.8)
+    assert is_d2 is True and dwell_d2 == 1.6, f"M2 Close non protetta: is_d2={is_d2}, dwell={dwell_d2}"
+
+    # Verifica protezione Start Menu su Monitor 1 primario (x in [0, 52], y in [1032, 1080])
+    is_start, dwell_start = guard.evaluate_dwell_time(20, 1060, base_dwell_time=0.8)
+    assert is_start is True and dwell_start == 1.6, f"Start Menu non protetto: is_start={is_start}"
+
+    # Area di lavoro neutra sicura
+    is_safe, dwell_safe = guard.evaluate_dwell_time(960, 540, base_dwell_time=0.8)
+    assert is_safe is False and dwell_safe == 0.8, "Area sicura erroneamente contrassegnata come pericolo"
+
+    # 2. Sniffing Dinamico Finestra Attiva in Primo Piano (Non massimizzata a centro schermo)
+    # Simuliamo finestra Notepad a rect (400, 300, 1000, 700) -> X button at (950..1000, 300..336)
+    guard._cached_fg_danger_rect = (950, 300, 1000, 336)
+    guard._last_fg_check_t = 5000.0
+    guard.protect_foreground_window = True
+
+    is_fg, dwell_fg = guard.evaluate_dwell_time(970, 315, base_dwell_time=0.8, now=5000.02)
+    assert is_fg is True and dwell_fg == 1.6
+    assert guard.last_danger_type == "foreground_window_close"
+    print("Sniffing Finestra Foreground (Non Massimizzata): Pulsante 'X' protetto con successo")
+
+    # 3. Bio-Feedback Visivo HUD Alerting
+    hud = DwellHUD(size=80)
+    assert hasattr(hud, "is_last_danger")
+    hud.is_last_danger = True
+    assert hud.is_last_danger is True
+    print("Dwell Safety HUD Alerting: Stato allerta Danger Zone verificato con successo")
+    print(">>> TEST 71 SUPERATO! <<<")
+
+
+def test_wheelchair_2d_vector_jolt_and_lateral_bump():
+    print("\n--- TEST 72: Wheelchair 2D Vector Shock & Lateral Mechanical Bump Rejection ---")
+    from core.wheelchair_jolt import WheelchairJoltFilter
+
+    wj = WheelchairJoltFilter(jolt_accel_threshold=6.0, lockout_duration_sec=0.18, is_enabled=True)
+
+    # 1. Movimento Fisiologico Regolare Cefalico 2D (Velocità moderata, accelerazione < 3.0 norm/s²)
+    now = 100.0
+    dt = 0.016
+    for i in range(5):
+        t_cur = now + i * dt
+        rx = 0.50 + 0.005 * i
+        ry = 0.50 + 0.003 * i
+        ox, oy, is_j = wj.filter_2d(rx, ry, t_cur)
+        assert not is_j, f"Falso allarme sobbalzo su movimento fisiologico frame {i}"
+        assert abs(ox - rx) < 1e-4 and abs(oy - ry) < 1e-4
+
+    print("Movimento Fisiologico 2D (Zero Urti): 100% Trasparenza confermata")
+
+    # 2. Iniezione Urto Meccanico Laterale (Ruota urta stipite porta: picco accelerazione X)
+    t_shock = now + 5 * dt
+    # Salto laterale brusco di 0.12 norm (~230 px) in un solo frame da 16 ms:
+    raw_x_bump = 0.50 + 0.005 * 4 + 0.12
+    raw_y_bump = 0.50 + 0.003 * 4 + 0.001
+    damped_x, damped_y, is_shock = wj.filter_2d(raw_x_bump, raw_y_bump, t_shock)
+
+    assert is_shock is True, "L'urto meccanico laterale doveva attivare la shock absorption!"
+    assert wj.jolts_absorbed == 1, f"Atteso 1 jolt assorbito, ottenuto {wj.jolts_absorbed}"
+    assert wj.lateral_jolts == 1, f"Atteso 1 jolt laterale, ottenuto {wj.lateral_jolts}"
+    assert damped_x < 0.55, f"La coordinata X doveva essere frenata vicino alla posizione pre-urto (0.52), ottenuto: {damped_x}"
+    print(f"Urto Laterale Carrozzina Neutralizzato: Salto grezzo X={raw_x_bump:.3f} frenato a {damped_x:.3f} (Shock Assorbito)")
+
+    # 3. Fase di Lockout (t = t_shock + 80 ms < 180 ms lockout)
+    t_lock = t_shock + 0.080
+    lx, ly, is_locked = wj.filter_2d(0.70, 0.52, t_lock)
+    assert is_locked is True, "Durante la finestra di lockout il filtro deve rimanere attivo"
+
+    # 4. Fase di Rilascio Dolce (t = t_shock + 220 ms > 180 ms lockout)
+    t_release = t_shock + 0.220
+    rx_rel, ry_rel, is_rel = wj.filter_2d(0.70, 0.52, t_release)
+    assert is_rel is False, "Al termine della finestra di lockout il filtro deve rilasciare il controllo"
+    print("Rientro e Rilascio Continuo C^1 Post-Shock: Confermato con successo")
+
+    # 5. Verifica Retro-compatibilità Metodo filter_y (Sobbalzo Verticale)
+    wj_vert = WheelchairJoltFilter(jolt_accel_threshold=6.0, lockout_duration_sec=0.18, is_enabled=True)
+    assert wj_vert.jolts_absorbed == 0
+    wj_vert.filter_y(0.50, now=200.0)
+    wj_vert.filter_y(0.502, now=200.016)
+    dy_damped, is_vy_jolt = wj_vert.filter_y(0.68, now=200.032)
+    assert is_vy_jolt is True, "Il sobbalzo verticale con filter_y doveva innescare lo shock absorber"
+    assert wj_vert.jolts_absorbed == 1
+    print("Retro-compatibilità 1D filter_y (Sobbalzo Verticale): 100% Conforme")
+    print(">>> TEST 72 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -3685,8 +3792,10 @@ if __name__ == "__main__":
     test_gesture_trigger_monocular_wink_and_anti_speech_hold()
     test_multi_monitor_continuous_boundary_and_target_pinning()
     test_audio_feedback_sinusoidal_wav_and_ttl_preemption()
+    test_dwell_safety_multi_monitor_and_foreground_window_sniffing()
+    test_wheelchair_2d_vector_jolt_and_lateral_bump()
     print("\n========================================================")
-    print("TUTTI I 70 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 72 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

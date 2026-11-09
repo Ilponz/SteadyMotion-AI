@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **70 su 70 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **72 su 72 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -113,6 +113,8 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Tastiera Assistiva Smart Shift, Caps Lock & Auto-Capitalizzazione (gui/floating_keyboard.py):** Macchina a stati Shift (Minuscolo -> Shift singolo carattere -> Caps Lock permanente -> Minuscolo), tasto apostrofo integrato, feedback acustico al tocco e auto-capitalizzazione automatica dopo punto fermo ed esclamativo/interrogativo per digitazione fluida e naturale in CAA.
 - [x] **Trigger Gesti Facciali con Occhiolino Monoculare & Filtro Tenuta Anti-Speech (core/gesture_trigger.py & core/tracker_engine.py):** Monitoraggio separato di ammiccamento sinistro e destro con supporto gesti 'wink_left' e 'wink_right' (occlusione monoculare volontaria distinta dall'ammiccamento bilaterale di sicurezza) e filtro temporale di tenuta minima configurabile (Anti-Speech Hold Filter >= 120 ms) per azzerare i falsi clic durante la normale conversazione fonetica o sbadigli.
 - [x] **Audio Feedback Engine Sinusoidale & Zero-Latency Memory WAV (core/audio_feedback.py):** Pre-sintesi in RAM a startup di tutti i 4 Soundpack clinici in formato RIFF/WAVE PCM 16-bit Mono con inviluppo sinusoidale rialzato Hann Window (3.5 ms), eliminazione totale dei pop/click da onda quadra (winsound.Beep), riproduzione priva di allocazioni heap, TTL guard anti-obsolescenza (scadenza micro-ticks a 50 ms) e preemption istantanea con flush della coda per allarme caregiver d'emergenza.
+- [x] **Dwell Safety Guard Multi-Monitor & Foreground Window Sniffing (core/dwell_safety.py, gui/hud_overlay.py):** Protezione estesa a tutti i monitor fisici e sniffing dinamico Win32 GetForegroundWindow/GetWindowRect a zero-allocazioni (throttled a 100 ms) per proteggere il pulsante 'X' anche di finestre non massimizzate; integrazione HUD con reticolo di sicurezza rosso allerta, icona di avviso e telemetria delle azioni distruttive sventate nella cartella clinica.
+- [x] **Filtro Sobbalzi Carrozzina Vettoriale 2D (core/wheelchair_jolt.py):** Estensione al piano bidimensionale (||a|| > 6.0 norm/s²) con inizializzazione differenziale della velocità a zero falsi positivi; intercettazione e assorbimento urti meccanici laterali (torsioni asta webcam contro stipiti e porte) oltre ai dossi verticali, con rientro esponenziale continuo C^1 e disarmo immediato del dwell.
 
 ---
 

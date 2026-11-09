@@ -111,6 +111,10 @@ class SteadyMotionApp:
             vw=self.mouse.vw,
             vh=self.mouse.vh,
         )
+        self.dwell_safety.update_screen_geometry(
+            self.mouse.vx, self.mouse.vy, self.mouse.vw, self.mouse.vh,
+            monitors=self.mouse.get_display_monitors(),
+        )
 
         # Trigger Acustico Ausiliario (Microfono Webcam)
         self.acoustic = AcousticTrigger(
@@ -261,6 +265,7 @@ class SteadyMotionApp:
         self.shared_hud_offset_x: float = 0.0
         self.shared_hud_offset_y: float = 0.0
         self.shared_hud_tolerance: float = 24.0
+        self.shared_hud_is_danger: bool = False
         self.shared_is_fatigued: bool = False
         self.shared_fatigue_reason: str = "Nessuna"
         self.shared_is_copilot: bool = False
@@ -540,6 +545,7 @@ class SteadyMotionApp:
             self.shared_hud_offset_x = getattr(self.dwell_clicker, "current_offset_x", 0.0)
             self.shared_hud_offset_y = getattr(self.dwell_clicker, "current_offset_y", 0.0)
             self.shared_hud_tolerance = getattr(self.dwell_clicker, "tolerance_radius", 24.0)
+            self.shared_hud_is_danger = getattr(self.dwell_safety, "is_last_danger", False)
             self.shared_hud_dirty = True
 
     def _on_camera_lost(self):
@@ -655,7 +661,10 @@ class SteadyMotionApp:
             # Controllo periodico cambio risoluzione o hotplug multi-monitor ogni 1.5s
             if t_now - last_metric_check > 1.5:
                 if self.mouse.check_screen_metrics_changed():
-                    self.dwell_safety.update_screen_geometry(self.mouse.vx, self.mouse.vy, self.mouse.vw, self.mouse.vh)
+                    self.dwell_safety.update_screen_geometry(
+                        self.mouse.vx, self.mouse.vy, self.mouse.vw, self.mouse.vh,
+                        monitors=self.mouse.get_display_monitors(),
+                    )
                     wake_cx = int(self.mouse.vx + self.mouse.vw * 0.5)
                     self.gaze_sleep.set_wake_target_rect(wake_cx - 60, int(self.mouse.vy + 10), wake_cx + 60, int(self.mouse.vy + 70))
                 last_metric_check = t_now
@@ -674,7 +683,7 @@ class SteadyMotionApp:
                 # Simulazione traiettoria cefalica + micro-tremore a 5 Hz
                 raw_x = 0.5 + 0.14 * math.sin(sim_t) + 0.002 * math.sin(t_now * 31.4)
                 raw_y = 0.5 + 0.10 * math.cos(sim_t * 0.8) + 0.002 * math.cos(t_now * 31.4)
-                raw_y, is_jolt = self.wheelchair_jolt.filter_y(raw_y, t_now)
+                raw_x, raw_y, is_jolt = self.wheelchair_jolt.filter_2d(raw_x, raw_y, t_now)
                 if is_jolt:
                     if self.dwell_clicker.progress > 0.0:
                         self.dwell_clicker.cancel()
@@ -728,9 +737,11 @@ class SteadyMotionApp:
                             self.hud.hide()
                         else:
                             # Valutazione Sicurezza Dwell su Aree Critiche
-                            _, eff_dwell = self.dwell_safety.evaluate_dwell_time(snap_x, snap_y, self._base_dwell_time)
+                            is_danger, eff_dwell = self.dwell_safety.evaluate_dwell_time(snap_x, snap_y, self._base_dwell_time, now=t_now)
                             if self.dwell_clicker.dwell_time != eff_dwell:
                                 self.dwell_clicker.dwell_time = eff_dwell
+                            if is_danger and self.dwell_clicker.progress > 0.05:
+                                self.clinical_logger.record_danger_zone_interception()
                             self.dwell_clicker.update(snap_x, snap_y, t_now)
 
                 with self.telemetry_lock:
@@ -796,7 +807,7 @@ class SteadyMotionApp:
                 roll = res.roll
                 raw_x = res.cursor_raw_x
                 raw_y = res.cursor_raw_y
-                raw_y, is_jolt = self.wheelchair_jolt.filter_y(raw_y, t_now)
+                raw_x, raw_y, is_jolt = self.wheelchair_jolt.filter_2d(raw_x, raw_y, t_now)
                 if is_jolt:
                     if self.dwell_clicker.progress > 0.0:
                         self.dwell_clicker.cancel()
@@ -872,9 +883,11 @@ class SteadyMotionApp:
                             self.hud.hide()
                         else:
                             # Valutazione Sicurezza Dwell su Aree Critiche
-                            _, eff_dwell = self.dwell_safety.evaluate_dwell_time(snap_x, snap_y, self._base_dwell_time)
+                            is_danger, eff_dwell = self.dwell_safety.evaluate_dwell_time(snap_x, snap_y, self._base_dwell_time, now=t_now)
                             if self.dwell_clicker.dwell_time != eff_dwell:
                                 self.dwell_clicker.dwell_time = eff_dwell
+                            if is_danger and self.dwell_clicker.progress > 0.05:
+                                self.clinical_logger.record_danger_zone_interception()
                             self.dwell_clicker.update(snap_x, snap_y, t_now)
 
             with self.telemetry_lock:
@@ -921,6 +934,7 @@ class SteadyMotionApp:
             h_ox = self.shared_hud_offset_x
             h_oy = self.shared_hud_offset_y
             h_tol = self.shared_hud_tolerance
+            is_danger = getattr(self, "shared_hud_is_danger", False)
             is_fatigued = self.shared_is_fatigued
             fatigue_reason = self.shared_fatigue_reason
             is_copilot = self.shared_is_copilot
@@ -929,7 +943,7 @@ class SteadyMotionApp:
         if self.is_paused or is_copilot or not self.dwell_clicker.is_enabled:
             self.hud.hide()
         elif hud_dirty:
-            self.hud.show_progress(progress, hx, hy, offset_x=h_ox, offset_y=h_oy, tolerance_radius=h_tol)
+            self.hud.show_progress(progress, hx, hy, offset_x=h_ox, offset_y=h_oy, tolerance_radius=h_tol, is_danger=is_danger)
 
         # Aggiornamento telemetria, radar e VU meter su CustomTkinter
         self.panel.update_telemetry(

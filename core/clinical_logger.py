@@ -52,6 +52,7 @@ class ClinicalSessionLogger:
         self.gesture_clicks: int = 0
         self.wheelchair_jolts_absorbed: int = 0
         self.dystonic_teleports_clamped: int = 0
+        self.danger_zone_interceptions: int = 0
         self.total_cursor_distance_px: float = 0.0
         self._last_cursor_pos: Optional[Tuple[float, float]] = None
 
@@ -136,6 +137,10 @@ class ClinicalSessionLogger:
     def record_dystonic_teleport_clamped(self):
         """Registra un teletrasporto del puntatore causato da spasmo distonico frenato con successo."""
         self.dystonic_teleports_clamped += 1
+
+    def record_danger_zone_interception(self):
+        """Registra un evento di protezione da chiusura o azione distruttiva involontaria (Dwell Safety)."""
+        self.danger_zone_interceptions += 1
 
     def record_typing(self, raw_chars: int = 1):
         """Registra caratteri digitati individualmente sulla tastiera."""
@@ -238,6 +243,7 @@ class ClinicalSessionLogger:
                 "gesture_clicks": self.gesture_clicks,
                 "wheelchair_jolts_absorbed": self.wheelchair_jolts_absorbed,
                 "dystonic_teleports_clamped": self.dystonic_teleports_clamped,
+                "danger_zone_interceptions": self.danger_zone_interceptions,
                 "emergency_calls_count": self.emergency_calls_count,
             },
             "aac_metrics": {
@@ -338,6 +344,7 @@ class ClinicalSessionLogger:
 | **Clic Gesti Facciali Silenziosi** | {m['gesture_clicks']} | FACS blendshapes (mandibola/sorriso) |
 | **Sobbalzi Carrozzina Neutralizzati** | {m.get('wheelchair_jolts_absorbed', 0)} | Filtro sedia a rotelle (dossi/soglie) |
 | **Teletrasporti da Spasmo Frenati** | {m.get('dystonic_teleports_clamped', 0)} | Slew-rate clamp anti-spasmo acuto |
+| **Chiusure Finestre Prevenute (Dwell Safety)** | {m.get('danger_zone_interceptions', 0)} | Protezione attiva da azioni distruttive |
 | **Disconnessioni Webcam Recuperate** | {s.get('hardware_resilience', {}).get('camera_dropouts_count', 0)} ({s.get('hardware_resilience', {}).get('total_camera_dropout_sec', 0.0)} s) | Watchdog auto-recovery USB |
 
 ---
