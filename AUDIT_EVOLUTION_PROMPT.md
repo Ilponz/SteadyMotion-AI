@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **65 su 65 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **67 su 67 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -103,12 +103,13 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Monitor Ergonomico Closed-Loop & Zero Heap Churn (core/ergonomics.py):** Assorbimento bi-assiale (Pitch e Yaw) con iniezione del bias nella fusione 6-DoF del tracker engine, struttura ErgonomicsStatus pre-allocata in-place (0 byte/frame allocati) e notifica clinica edge-triggered che elimina il flooding a 60 Hz (1 evento per episodio sostenuto anziché 600).
 - [x] **Motore Espansione Abbreviazioni AAC:** Lookup O(1) con priorità top-ranking #1, sincronizzazione Win32 SendInput via cancellazione Backspace e iniezione frase espansa, persistenza JSON atomica e KSR esteso fino all'84.0%.
 - [x] **Valutatore Standardizzato ISO 9241-9 / ISO 9241-411:** Bersagli circolari a stella diametrale reciproca (13 nodi), calcolo dell'Ampiezza Bersaglio Effettiva (We = 4.133 * sigma), Indice di Difficoltà Effettivo (IDe) e Throughput Effettivo (TPe).
-- [x] **Trigger Acustico DSP & Auto-Calibrazione (core/acoustic_trigger.py):** Architettura testabile disaccoppiata process_audio_chunk, immunità totale da ronzii di rete 50/60 Hz e rumore bianco, rilevamento transitori 'pop' / tongue click ad alta frequenza, debounce anti-rimbalzo a 350 ms e auto-calibrazione adattiva del rumore ambientale.
+- [x] **Trigger Acustico DSP & Zero-Heap In-Place Differentiation (core/acoustic_trigger.py):** Pre-enfasi passa-alto in-place su buffer pre-allocato ed estrazione ZCR vettorizzata senza allocare array float/sign intermedi; immunità totale a ronzii di rete 50/60 Hz e rumore bianco, rilevamento transitori 'pop' / tongue click ad alta frequenza, debounce anti-rimbalzo a 350 ms e auto-calibrazione adattiva del rumore ambientale.
 - [x] **Integrazione Throughput ISO 9241-9 nel Clinical Session Logger (core/clinical_logger.py, gui/control_panel.py, gui/floating_keyboard.py):** Registrazione automatica delle valutazioni motorie Fitts all'interno delle cartelle sanitarie riabilitative, generazione di tabella comparativa standardizzata (TP, TPe, MT, We, IDe, σ) nei report Markdown/JSON e sincronizzazione telemetrica continua della digitazione CAA da tastiera flottante.
 - [x] **Smorzatore Dinamico Atassia Cerebellare (core/ataxia_filter.py):** Buffer circolare a zero allocazioni (450 ms) che monitora le inversioni di segno della velocità (2.5 - 4.5 Hz) e la velocità netta; abbatte del 63.3% le oscillazioni intenzionali terminali senza lag d'inseguimento e con rilascio balistico istantaneo.
 - [x] **Freno Biometrico Anti-Teletrasporto per Spasmi Distonici (core/spasm_clamp.py):** Limitatore fisiologico di slew-rate che intercetta salti balistici improvvisi (v > 4200 px/s) causati da spasmi distonici o mioclonici, frenando il puntatore a coordinate continue e azzerando il dwell in-flight per prevenire clic distruttivi.
 - [x] **Reticolo di Fissazione HUD & Micro-Scatter Bio-Feedback (gui/hud_overlay.py):** Mirino di precisione sub-pixel, cerchio tratteggiato della soglia di tolleranza e buffer circolare dello storico scostamenti (8 campioni) per bio-feedback visivo continuo al paziente durante la sosta Dwell.
 - [x] **Tasti Modificatori Win32 & Scorciatoie Assistive (core/virtual_input.py & gui/floating_keyboard.py):** Iniezione SendInput nativa sequenziale a 4 eventi firmata 'STEA' per combinazioni di sistema (Ctrl+C, Ctrl+V, Ctrl+A, Ctrl+Z, Tab, Esc) su tastiera assistiva a zero furto di focus.
+- [x] **Tastiera Assistiva Smart Shift, Caps Lock & Auto-Capitalizzazione (gui/floating_keyboard.py):** Macchina a stati Shift (Minuscolo -> Shift singolo carattere -> Caps Lock permanente -> Minuscolo), tasto apostrofo integrato, feedback acustico al tocco e auto-capitalizzazione automatica dopo punto fermo ed esclamativo/interrogativo per digitazione fluida e naturale in CAA.
 
 ---
 

@@ -47,6 +47,9 @@ class AcousticTrigger:
         self.current_volume = 0.0
         self.noise_floor = 0.04
 
+        # Buffer di lavoro statici pre-allocati (Zero Heap Churn a 31 Hz)
+        self._hp_buffer: np.ndarray = np.zeros(self.chunk_size, dtype=np.float32)
+
         # Stato di calibrazione adattiva
         self.is_calibrating = False
         self._calib_samples: List[float] = []
@@ -115,12 +118,18 @@ class AcousticTrigger:
             return False
 
         signal = indata[:, 0] if indata.ndim > 1 else indata
-        if signal.shape[0] == 0:
+        N = signal.shape[0]
+        if N <= 1:
             return False
 
-        # Pre-enfasi: filtro passa-alto differenziale per sopprimere ronzii di rete (50/60 Hz) e parlato ordinario
-        hp_signal = np.diff(signal, prepend=signal[0])
-        hp_rms = float(np.sqrt(np.mean(hp_signal**2)))
+        # Verifica e ridimensionamento elastico del buffer solo in caso di cambio hardware
+        if self._hp_buffer.shape[0] != N:
+            self._hp_buffer = np.zeros(N, dtype=np.float32)
+
+        # Pre-enfasi differenziale in-place a zero allocazioni (Zero Heap Churn)
+        self._hp_buffer[0] = 0.0
+        np.subtract(signal[1:], signal[:-1], out=self._hp_buffer[1:])
+        hp_rms = float(np.sqrt(np.mean(np.square(self._hp_buffer))))
         self.current_volume = hp_rms
 
         t_now = now if now is not None else time.perf_counter()
@@ -141,8 +150,10 @@ class AcousticTrigger:
                         cb(self.threshold)
             return False
 
-        # Zero-Crossing Rate per discriminare transitori rapidi (soffio o schiocco 'pop')
-        zcr = float(np.mean(np.abs(np.diff(np.sign(signal))))) / 2.0
+        # Zero-Crossing Rate (ZCR) vettorizzato a zero allocazioni dinamiche
+        # Rileva le inversioni di segno senza allocare array float intermedi
+        sign_crossings = int(np.count_nonzero((signal[:-1] > 0.0) != (signal[1:] > 0.0)))
+        zcr = float(sign_crossings) / float(N - 1)
 
         triggered = False
         if hp_rms > self.threshold and zcr > 0.08 and (t_now - self.last_trigger_time > self.debounce_time):

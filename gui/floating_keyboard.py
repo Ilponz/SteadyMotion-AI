@@ -60,6 +60,12 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         self.current_aac_category = tk.StringVar(value="BISOGNI_PRIMARI")
 
         self.direct_injection = tk.BooleanVar(value=True)
+
+        # Stato Maiuscole / Minuscole (Smart Shift & Caps Lock)
+        self.is_shift: bool = True  # Inizio frase predefinito in maiuscolo
+        self.is_caps_lock: bool = False
+        self.letter_buttons: List[Tuple[ctk.CTkButton, str]] = []
+        self.btn_shift: Optional[ctk.CTkButton] = None
         self.typed_text = tk.StringVar(value="")
 
         self._build_ui()
@@ -233,27 +239,89 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
         self._build_aac_tab()
 
     def _build_qwerty_tab(self):
-        rows = [
-            ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-            ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
-            ["Z", "X", "C", "V", "B", "N", "M"],
-        ]
+        self.letter_buttons = []
+        row0 = ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"]
+        row1 = ["A", "S", "D", "F", "G", "H", "J", "K", "L"]
+        row2 = ["Z", "X", "C", "V", "B", "N", "M"]
 
-        for r_idx, row in enumerate(rows):
-            f_row = ctk.CTkFrame(self.tab_letters, fg_color="transparent")
-            f_row.pack(fill="x", expand=True, pady=1)
-            for char in row:
-                btn = ctk.CTkButton(
-                    f_row,
-                    text=char,
-                    font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
-                    fg_color="#1E293B",
-                    hover_color="#0284C7",
-                    corner_radius=6,
-                    height=38,
-                    command=lambda c=char: self._handle_char_click(c),
-                )
-                btn.pack(side="left", expand=True, fill="both", padx=1)
+        # Riga 0: Q..P
+        f_row0 = ctk.CTkFrame(self.tab_letters, fg_color="transparent")
+        f_row0.pack(fill="x", expand=True, pady=1)
+        for char in row0:
+            btn = ctk.CTkButton(
+                f_row0,
+                text=char,
+                font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+                fg_color="#1E293B",
+                hover_color="#0284C7",
+                corner_radius=6,
+                height=38,
+                command=lambda c=char: self._handle_char_click(c),
+            )
+            btn.pack(side="left", expand=True, fill="both", padx=1)
+            self.letter_buttons.append((btn, char))
+
+        # Riga 1: A..L
+        f_row1 = ctk.CTkFrame(self.tab_letters, fg_color="transparent")
+        f_row1.pack(fill="x", expand=True, pady=1)
+        for char in row1:
+            btn = ctk.CTkButton(
+                f_row1,
+                text=char,
+                font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+                fg_color="#1E293B",
+                hover_color="#0284C7",
+                corner_radius=6,
+                height=38,
+                command=lambda c=char: self._handle_char_click(c),
+            )
+            btn.pack(side="left", expand=True, fill="both", padx=1)
+            self.letter_buttons.append((btn, char))
+
+        # Riga 2: [⇧ MAIUSC] + Z..M + [']
+        f_row2 = ctk.CTkFrame(self.tab_letters, fg_color="transparent")
+        f_row2.pack(fill="x", expand=True, pady=1)
+
+        self.btn_shift = ctk.CTkButton(
+            f_row2,
+            text="⇧ MAIUSC",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            fg_color="#0284C7" if self.is_shift else "#1E293B",
+            hover_color="#0369A1",
+            corner_radius=6,
+            height=38,
+            width=80,
+            command=self._toggle_shift,
+        )
+        self.btn_shift.pack(side="left", fill="both", padx=1)
+
+        for char in row2:
+            btn = ctk.CTkButton(
+                f_row2,
+                text=char,
+                font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+                fg_color="#1E293B",
+                hover_color="#0284C7",
+                corner_radius=6,
+                height=38,
+                command=lambda c=char: self._handle_char_click(c),
+            )
+            btn.pack(side="left", expand=True, fill="both", padx=1)
+            self.letter_buttons.append((btn, char))
+
+        # Tasto apostrofo fondamentale per lingua italiana (l'acqua, c'è, d'accordo)
+        btn_apo = ctk.CTkButton(
+            f_row2,
+            text="'",
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            fg_color="#1E293B",
+            hover_color="#0284C7",
+            corner_radius=6,
+            height=38,
+            width=50,
+            command=lambda: self._handle_char_click("'"),
+        )
+        btn_apo.pack(side="left", fill="both", padx=1)
 
         # Riga Funzioni: Spazio, Backspace, Invio
         f_func = ctk.CTkFrame(self.tab_letters, fg_color="transparent")
@@ -266,7 +334,7 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             fg_color="#334155",
             hover_color="#0284C7",
             height=38,
-            command=lambda: self._handle_char_click(" "),
+            command=self._handle_space,
         )
         btn_spc.pack(side="left", expand=True, fill="both", padx=2)
 
@@ -339,6 +407,9 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
 
     def _handle_clear_all(self):
         self.typed_text.set("")
+        if not self.is_caps_lock:
+            self.is_shift = True
+            self._update_keyboard_case()
         if hasattr(self, "audio_feedback") and self.audio_feedback:
             self.audio_feedback.play("click")
 
@@ -376,7 +447,7 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             fg_color="#334155",
             hover_color="#0284C7",
             height=38,
-            command=lambda: self._handle_char_click(" "),
+            command=self._handle_space,
         )
         btn_spc.pack(side="left", expand=True, fill="both", padx=2)
 
@@ -474,24 +545,81 @@ class FloatingKeyboardWindow(ctk.CTkToplevel):
             self.aac_grid_frame.grid_columnconfigure(c, weight=1)
             self.aac_grid_frame.grid_rowconfigure(r, weight=1)
 
+    def _toggle_shift(self):
+        """Macchina a stati Shift: Minuscolo -> Shift (1 char) -> Caps Lock (Permanente) -> Minuscolo."""
+        if not self.is_shift and not self.is_caps_lock:
+            self.is_shift = True
+            self.is_caps_lock = False
+        elif self.is_shift and not self.is_caps_lock:
+            self.is_shift = True
+            self.is_caps_lock = True
+        else:
+            self.is_shift = False
+            self.is_caps_lock = False
+
+        self._update_keyboard_case()
+        if hasattr(self, "audio_feedback") and self.audio_feedback:
+            try:
+                self.audio_feedback.play("click")
+            except Exception:
+                pass
+
+    def _update_keyboard_case(self):
+        """Aggiorna la grafica di tutti i tasti alfabetici in base allo stato Shift / Caps Lock."""
+        if self.btn_shift is not None:
+            if self.is_caps_lock:
+                self.btn_shift.configure(text="🔒 CAPS", fg_color="#F59E0B", hover_color="#D97706")
+            elif self.is_shift:
+                self.btn_shift.configure(text="⇧ MAIUSC", fg_color="#0284C7", hover_color="#0369A1")
+            else:
+                self.btn_shift.configure(text="⇧ maiusc", fg_color="#1E293B", hover_color="#334155")
+
+        for btn, char in self.letter_buttons:
+            btn.configure(text=char.upper() if self.is_shift else char.lower())
+
     def _handle_char_click(self, char: str):
+        # Determinazione del carattere effettivo (Maiuscolo / Minuscolo)
+        if char.isalpha() and len(char) == 1:
+            out_char = char.upper() if self.is_shift else char.lower()
+            if self.is_shift and not self.is_caps_lock:
+                self.is_shift = False
+                self._update_keyboard_case()
+        else:
+            out_char = char
+
         # 1. Aggiorna buffer locale
         cur = self.typed_text.get()
-        self.typed_text.set(cur + char)
+        self.typed_text.set(cur + out_char)
 
         # 2. Iniezione diretta a Windows se attiva
         if self.direct_injection.get() and self.virtual_input:
             try:
-                self.virtual_input.send_unicode_char(char)
+                self.virtual_input.send_unicode_char(out_char)
             except Exception:
                 pass
 
-        # 3. Registrazione per telemetria clinica CAA
+        # 3. Feedback acustico digitazione
+        if hasattr(self, "audio_feedback") and self.audio_feedback:
+            try:
+                self.audio_feedback.play("key_press")
+            except Exception:
+                pass
+
+        # 4. Registrazione per telemetria clinica CAA
         if self.clinical_logger is not None:
             try:
                 self.clinical_logger.record_typing(1)
             except Exception:
                 pass
+
+    def _handle_space(self):
+        """Gestore barra spaziatrice con Smart Auto-Capitalization di inizio frase."""
+        cur = self.typed_text.get()
+        if cur and cur.rstrip() and cur.rstrip()[-1] in (".", "!", "?"):
+            if not self.is_caps_lock and not self.is_shift:
+                self.is_shift = True
+                self._update_keyboard_case()
+        self._handle_char_click(" ")
 
     def _handle_backspace(self):
         cur = self.typed_text.get()

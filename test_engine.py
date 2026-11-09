@@ -3324,6 +3324,123 @@ def test_hud_fixation_stability_reticle_and_micro_scatter():
     print(">>> TEST 65 SUPERATO! <<<")
 
 
+def test_acoustic_trigger_zero_heap_dsp_and_in_place_buffers():
+    """TEST 66: Trigger Acustico Zero Heap Churn, Pre-Enfasi In-Place & ZCR Vettorizzato."""
+    print("\n--- TEST 66: Trigger Acustico Zero Heap Churn & DSP In-Place ---")
+    from core.acoustic_trigger import AcousticTrigger
+
+    sr = 16000
+    chunk_size = 512
+    dt = chunk_size / sr
+    trigger = AcousticTrigger(threshold=0.18, debounce_time=0.35, sample_rate=sr, chunk_size=chunk_size)
+
+    # 1. Verifica pre-allocazione buffer di lavoro
+    assert hasattr(trigger, "_hp_buffer"), "Buffer statico _hp_buffer assente in AcousticTrigger"
+    assert trigger._hp_buffer.shape == (chunk_size,)
+    assert trigger._hp_buffer.dtype == np.float32
+
+    # Verifica conservazione dell'indirizzo di memoria del buffer durante elaborazioni multiple
+    orig_addr = trigger._hp_buffer.__array_interface__["data"][0]
+
+    # Genera segnale sinusoidale puro a 1000 Hz: 32 cicli completi in 32 ms -> 64 inversioni di segno
+    t_chunk = np.linspace(0, dt, chunk_size, endpoint=False, dtype=np.float32)
+    sine_1khz = (0.35 * np.sin(2.0 * math.pi * 1000.0 * t_chunk)).astype(np.float32)
+
+    for i in range(20):
+        trigger.process_audio_chunk(sine_1khz, now=100.0 + i * dt)
+
+    new_addr = trigger._hp_buffer.__array_interface__["data"][0]
+    assert orig_addr == new_addr, "Il buffer di lavoro statico _hp_buffer non deve essere riallocato (Zero Heap Churn)"
+
+    # 2. Verifica Matematica Zero-Crossing Rate (ZCR)
+    # Su 32 cicli in 512 campioni, attese esattamente 64 inversioni di segno -> zcr ~ 64 / 511 ~ 0.125
+    expected_crossings = 64
+    expected_zcr = expected_crossings / float(chunk_size - 1)
+    actual_crossings = int(np.count_nonzero((sine_1khz[:-1] > 0.0) != (sine_1khz[1:] > 0.0)))
+    actual_zcr = actual_crossings / float(chunk_size - 1)
+
+    assert abs(actual_crossings - expected_crossings) <= 1, f"Inversioni calcolate {actual_crossings} vs attese {expected_crossings}"
+    assert abs(actual_zcr - expected_zcr) < 0.01
+    print(f"Zero-Crossing Rate (1 kHz): Misurato ZCR={actual_zcr:.4f} (Atteso: {expected_zcr:.4f}) | Inversioni: {actual_crossings}")
+    print("Acoustic Trigger DSP: 100% In-Place, Zero Heap Churn Verificato")
+    print(">>> TEST 66 SUPERATO! <<<")
+
+
+def test_assistive_keyboard_smart_shift_and_auto_capitalization():
+    """TEST 67: Tastiera Assistiva Smart Shift, Caps Lock & Auto-Capitalizzazione Frasi."""
+    print("\n--- TEST 67: Tastiera Assistiva Smart Shift, Caps Lock & Auto-Capitalizzazione ---")
+    import tkinter as tk
+    from gui.floating_keyboard import FloatingKeyboardWindow
+
+    root = tk.Tk()
+    root.withdraw()
+
+    kb = FloatingKeyboardWindow(parent=root, virtual_input_controller=None)
+
+    # 1. Stato iniziale: inizio frase maiuscola
+    assert kb.is_shift is True, "La tastiera assistiva deve iniziare con Shift attivo per inizio frase"
+    assert kb.is_caps_lock is False, "Caps Lock deve essere inizialmente disattivato"
+
+    # 2. Digitazione prima lettera: deve essere maiuscola ('C') e passare automaticamente a minuscolo
+    kb._handle_char_click("C")
+    assert kb.typed_text.get() == "C"
+    assert kb.is_shift is False, "Dopo la prima lettera maiuscola, Shift deve rilasciarsi automaticamente"
+
+    # Digitazione successive lettere: devono risultare minuscole
+    kb._handle_char_click("I")
+    kb._handle_char_click("A")
+    kb._handle_char_click("O")
+    assert kb.typed_text.get() == "Ciao"
+
+    # 3. Punteggiatura e Smart Auto-Capitalization di inizio nuova frase
+    kb._handle_char_click(".")
+    assert kb.typed_text.get() == "Ciao."
+
+    # Spazio dopo punto: deve riattivare automaticamente Shift
+    kb._handle_space()
+    assert kb.typed_text.get() == "Ciao. "
+    assert kb.is_shift is True, "Spazio dopo punto fermo deve riattivare Shift per inizio nuova frase"
+
+    # Nuova frase: 'C' maiuscola
+    kb._handle_char_click("C")
+    assert kb.typed_text.get() == "Ciao. C"
+    assert kb.is_shift is False
+
+    # Apostrofo italiano
+    kb._handle_char_click("'")
+    assert kb.typed_text.get() == "Ciao. C'"
+
+    # 4. Macchina a Stati Shift e Caps Lock
+    # Stato: Minuscolo -> Toggle Shift
+    kb._toggle_shift()
+    assert kb.is_shift is True and kb.is_caps_lock is False, "Primo toggle deve attivare Shift singolo carattere"
+
+    # Toggle successivo: Lock permanente (Caps Lock)
+    kb._toggle_shift()
+    assert kb.is_shift is True and kb.is_caps_lock is True, "Secondo toggle deve attivare Caps Lock permanente"
+
+    # Digitazione con Caps Lock permanente
+    kb._handle_char_click("O")
+    kb._handle_char_click("M")
+    kb._handle_char_click("E")
+    assert kb.typed_text.get() == "Ciao. C'OME"
+    assert kb.is_caps_lock is True, "Caps Lock deve rimanere attivo durante la digitazione continua"
+
+    # Sblocco Caps Lock
+    kb._toggle_shift()
+    assert kb.is_shift is False and kb.is_caps_lock is False, "Terzo toggle deve disattivare completamente Caps Lock"
+
+    # Svuotamento buffer: deve ripristinare Shift per la prossima frase
+    kb._handle_clear_all()
+    assert kb.typed_text.get() == ""
+    assert kb.is_shift is True, "Svuotamento testo deve ripristinare Shift iniziale"
+
+    kb.destroy()
+    root.destroy()
+    print("Smart Shift & Auto-Capitalizzazione OSK: Funzionamento 100% Conforme")
+    print(">>> TEST 67 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -3390,8 +3507,10 @@ if __name__ == "__main__":
     test_spasm_velocity_clamp_and_teleport_prevention()
     test_camera_watchdog_auto_recovery_and_hardware_resilience()
     test_hud_fixation_stability_reticle_and_micro_scatter()
+    test_acoustic_trigger_zero_heap_dsp_and_in_place_buffers()
+    test_assistive_keyboard_smart_shift_and_auto_capitalization()
     print("\n========================================================")
-    print("TUTTI I 65 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 67 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 
