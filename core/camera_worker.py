@@ -18,7 +18,7 @@ Ottimizzazioni implementate:
 
 import threading
 import time
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 import cv2
 import numpy as np
 
@@ -73,6 +73,14 @@ class CameraWorker:
         self.fps_counter: int = 0
         self.fps_timer: float = time.perf_counter()
 
+        # Watchdog di auto-recovery e stato di connessione hardware
+        self.is_connected: bool = True
+        self.is_reconnecting: bool = False
+        self.reconnect_count: int = 0
+        self.last_successful_frame_time: float = time.perf_counter()
+        self.on_connection_lost: Optional[Callable[[], None]] = None
+        self.on_connection_restored: Optional[Callable[[int, float], None]] = None
+
         # Auto-compensazione fotometrica dinamica per ambienti scarsamente illuminati e controluce
         self.auto_exposure_boost: bool = True
         self.clahe_enabled: bool = True
@@ -82,10 +90,11 @@ class CameraWorker:
         for i in range(256):
             self._lut_boost[0, i] = int(min(255, ((i / 255.0) ** 0.65) * 255.0))
 
-    def _init_capture(self, backend: int) -> Optional[cv2.VideoCapture]:
+    def _init_capture(self, backend: int, override_index: Optional[int] = None) -> Optional[cv2.VideoCapture]:
         """Tenta l'inizializzazione del backend video con configurazione MJPG e test primo frame."""
+        target_idx = self.camera_index if override_index is None else int(override_index)
         try:
-            cap = cv2.VideoCapture(self.camera_index, backend)
+            cap = cv2.VideoCapture(target_idx, backend)
             if not cap.isOpened():
                 return None
 
@@ -161,13 +170,28 @@ class CameraWorker:
             self.cap = None
 
         time.sleep(0.15)
-        self.cap = self._init_capture(cv2.CAP_DSHOW)
+        # 1. Prova prima sull'indice correntemente configurato
+        for backend in (cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY):
+            self.cap = self._init_capture(backend)
+            if self.cap is not None:
+                break
+
+        # 2. Se fallisce, esegue probing multi-indice (hot-plug USB su porta alternativa)
         if self.cap is None:
-            self.cap = self._init_capture(cv2.CAP_MSMF)
-            if self.cap is None:
-                self.cap = self._init_capture(cv2.CAP_ANY)
-                if self.cap is None:
-                    return False
+            for alt_idx in range(4):
+                if alt_idx == self.camera_index:
+                    continue
+                for backend in (cv2.CAP_DSHOW, cv2.CAP_MSMF):
+                    alt_cap = self._init_capture(backend, override_index=alt_idx)
+                    if alt_cap is not None:
+                        self.camera_index = alt_idx
+                        self.cap = alt_cap
+                        break
+                if self.cap is not None:
+                    break
+
+        if self.cap is None:
+            return False
 
         try:
             self.negotiated_fps = self.cap.get(cv2.CAP_PROP_FPS)
@@ -178,11 +202,35 @@ class CameraWorker:
     def _capture_loop(self):
         """Ciclo continuo di cattura hardware a zero allocazioni dinamiche con auto-recovery watchdog."""
         consecutive_failures = 0
+        dropout_start_time: Optional[float] = None
         while self.is_running:
             if self.cap is None or not self.cap.isOpened():
+                if self.is_connected:
+                    self.is_connected = False
+                    self.is_reconnecting = True
+                    if dropout_start_time is None:
+                        dropout_start_time = time.perf_counter()
+                    if self.on_connection_lost:
+                        try:
+                            self.on_connection_lost()
+                        except Exception:
+                            pass
+
                 if not self._reconnect_capture():
                     time.sleep(0.4)
                     continue
+                else:
+                    self.is_connected = True
+                    self.reconnect_count += 1
+                    dur = time.perf_counter() - (dropout_start_time or time.perf_counter())
+                    dropout_start_time = None
+                    self.is_reconnecting = False
+                    self.last_successful_frame_time = time.perf_counter()
+                    if self.on_connection_restored:
+                        try:
+                            self.on_connection_restored(self.camera_index, dur)
+                        except Exception:
+                            pass
 
             # Cattura diretta nel buffer pre-allocato (Zero Heap Churn)
             ret, _ = self.cap.read(image=self._raw_capture_buf)
@@ -190,13 +238,37 @@ class CameraWorker:
                 consecutive_failures += 1
                 if consecutive_failures >= 40:
                     # Oltre 40 fallimenti consecutivi (~400 ms di freeze driver/sospensione PC)
-                    self._reconnect_capture()
+                    if self.is_connected:
+                        self.is_connected = False
+                        self.is_reconnecting = True
+                        if dropout_start_time is None:
+                            dropout_start_time = time.perf_counter()
+                        if self.on_connection_lost:
+                            try:
+                                self.on_connection_lost()
+                            except Exception:
+                                pass
+
+                    reconnected = self._reconnect_capture()
+                    if reconnected:
+                        self.is_connected = True
+                        self.reconnect_count += 1
+                        dur = time.perf_counter() - (dropout_start_time or time.perf_counter())
+                        dropout_start_time = None
+                        self.is_reconnecting = False
+                        self.last_successful_frame_time = time.perf_counter()
+                        if self.on_connection_restored:
+                            try:
+                                self.on_connection_restored(self.camera_index, dur)
+                            except Exception:
+                                pass
                     consecutive_failures = 0
                 else:
                     time.sleep(0.01)
                 continue
 
             consecutive_failures = 0
+            self.last_successful_frame_time = time.perf_counter()
 
             t_now = time.perf_counter()
 

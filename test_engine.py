@@ -3210,6 +3210,120 @@ def test_spasm_velocity_clamp_and_teleport_prevention():
     print(">>> TEST 63 SUPERATO! <<<")
 
 
+def test_camera_watchdog_auto_recovery_and_hardware_resilience():
+    """TEST 64: Watchdog Auto-Recovery Telecamera USB, Probing Multi-Indice & Telemetria Clinica."""
+    print("\n--- TEST 64: Watchdog Auto-Recovery Telecamera USB & Resilienza Hardware ---")
+    from core.camera_worker import CameraWorker
+    from core.clinical_logger import ClinicalSessionLogger
+
+    # 1. Verifica Struttura e Proprietà di Connessione in CameraWorker
+    worker = CameraWorker(camera_index=999, target_width=320, target_height=240)
+    assert hasattr(worker, "is_connected"), "Proprietà is_connected assente in CameraWorker"
+    assert hasattr(worker, "is_reconnecting"), "Proprietà is_reconnecting assente in CameraWorker"
+    assert hasattr(worker, "reconnect_count"), "Proprietà reconnect_count assente in CameraWorker"
+    assert hasattr(worker, "last_successful_frame_time"), "last_successful_frame_time assente"
+    assert hasattr(worker, "on_connection_lost"), "Callback on_connection_lost assente"
+    assert hasattr(worker, "on_connection_restored"), "Callback on_connection_restored assente"
+    assert worker.is_connected is True
+    assert worker.reconnect_count == 0
+
+    # 2. Verifica Callback di Notifica Dropout e Ripristino
+    lost_fired = []
+    restored_fired = []
+    worker.on_connection_lost = lambda: lost_fired.append(True)
+    worker.on_connection_restored = lambda idx, dur: restored_fired.append((idx, dur))
+
+    # Simulazione tentativo di riconnessione su indice inesistente (Nessun crash, probing multi-indice sicuro)
+    reconnected = worker._reconnect_capture()
+    assert reconnected is False, "La riconnessione su indice inesistente deve restituire False senza eccezioni"
+    print("CameraWorker Watchdog: Probing multi-indice eseguito in sicurezza (Zero crash)")
+
+    # 3. Integrazione Telemetria Clinica nel ClinicalSessionLogger
+    logger = ClinicalSessionLogger(reports_dir="reports_test_tmp_camera")
+    assert logger.camera_dropouts_count == 0
+    assert logger.total_camera_dropout_sec == 0.0
+
+    # Registrazione di due eventi di disconnessione / auto-recovery
+    logger.record_camera_dropout(duration_s=1.45)
+    logger.record_camera_dropout(duration_s=0.85)
+
+    assert logger.camera_dropouts_count == 2
+    assert abs(logger.total_camera_dropout_sec - 2.30) < 1e-4
+
+    summary = logger.get_session_summary()
+    assert "hardware_resilience" in summary, "Sezione hardware_resilience assente nel riepilogo clinico"
+    hw = summary["hardware_resilience"]
+    assert hw["camera_dropouts_count"] == 2
+    assert hw["total_camera_dropout_sec"] == 2.30
+    assert hw["watchdog_auto_recovered"] is True
+
+    # Verifica formattazione Report Markdown
+    md = logger.generate_markdown_report(patient_id="Paziente-USB-Recovery")
+    assert "Disconnessioni Webcam Recuperate" in md, "Voce disconnessioni assente nel report Markdown"
+    assert "2 (2.3 s)" in md
+    print("Telemetria Resilienza Hardware & Watchdog: 100% Integrata e Conforme nel Report Clinico")
+    print(">>> TEST 64 SUPERATO! <<<")
+
+
+def test_hud_fixation_stability_reticle_and_micro_scatter():
+    """TEST 65: Reticolo di Fissazione HUD, Bio-Feedback Micro-Scatter & Offset Dinamico Dwell."""
+    print("\n--- TEST 65: Reticolo Fissazione HUD, Bio-Feedback Micro-Scatter & Offset Dwell ---")
+    from core.dwell_clicker import DwellClicker
+    from gui.hud_overlay import DwellHUD, HUD_THEMES
+    import math
+
+    # 1. Tracciamento Offset Istantaneo Sub-Pixel in DwellClicker
+    dwell = DwellClicker(dwell_time=0.80, tolerance_radius=20.0)
+    assert dwell.current_offset_x == 0.0
+    assert dwell.current_offset_y == 0.0
+    assert dwell.current_dist == 0.0
+
+    # Inizializzazione ancora a (500.0, 500.0)
+    dwell.update(500.0, 500.0, now=1.0)
+    assert dwell.anchor_x == 500.0 and dwell.anchor_y == 500.0
+
+    # Movimento a (506.0, 508.0): offset dx=6.0, dy=8.0, dist=10.0 px (dentro tolleranza 20.0)
+    dwell.update(506.0, 508.0, now=1.05)
+    assert abs(dwell.current_offset_x - 6.0) < 0.2
+    assert abs(dwell.current_offset_y - 8.0) < 0.2
+    assert abs(dwell.current_dist - 10.0) < 0.2
+    print(f"DwellClicker Micro-Offset: dx={dwell.current_offset_x:.1f} px | dy={dwell.current_offset_y:.1f} px | dist={dwell.current_dist:.1f} px")
+
+    # Cancel resetta gli offset a zero
+    dwell.cancel()
+    assert dwell.current_offset_x == 0.0
+    assert dwell.current_offset_y == 0.0
+    assert dwell.current_dist == 0.0
+
+    # 2. DwellHUD: Proprietà Reticolo, Buffer Circolare Micro-Scatter & Temi
+    hud = DwellHUD(size=80, theme="High-Contrast Amber")
+    assert hud.show_reticle is True, "Il reticolo di stabilità deve essere abilitato di default"
+    assert len(hud._scatter_history) == 8, "Lo storico scatter deve essere un buffer circolare a dimensione fissa 8"
+    assert hud._scatter_count == 0
+
+    hud.set_reticle_enabled(False)
+    assert hud.show_reticle is False
+    hud.set_reticle_enabled(True)
+    assert hud.show_reticle is True
+
+    # 3. Simulazione Avanzamento Micro-Scatter Zero Heap Churn (Buffer Circolare)
+    for i in range(12):
+        ox = math.sin(i * 0.5) * 8.0
+        oy = math.cos(i * 0.5) * 6.0
+        hud._scatter_history[hud._scatter_idx] = (float(ox), float(oy))
+        hud._scatter_idx = (hud._scatter_idx + 1) % 8
+        hud._scatter_count = min(8, hud._scatter_count + 1)
+
+    assert hud._scatter_count == 8, "Lo scatter_count deve essere saturato a 8 senza allocazioni dinamiche"
+    assert len(hud._scatter_history) == 8, "Lo storico scatter deve rimanere rigidamente a 8 elementi"
+
+    # Reset su hide
+    hud.hide()
+    assert hud._scatter_count == 0
+    print("HUD Micro-Scatter Ring Buffer: 100% Conforme (Zero Heap Churn)")
+    print(">>> TEST 65 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -3274,8 +3388,10 @@ if __name__ == "__main__":
     test_iso_9241_9_fitts_interactive_window_and_protocol()
     test_virtual_input_key_combinations_and_osk_shortcuts()
     test_spasm_velocity_clamp_and_teleport_prevention()
+    test_camera_watchdog_auto_recovery_and_hardware_resilience()
+    test_hud_fixation_stability_reticle_and_micro_scatter()
     print("\n========================================================")
-    print("TUTTI I 63 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 65 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

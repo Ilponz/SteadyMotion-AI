@@ -210,6 +210,10 @@ class SteadyMotionApp:
             # Fallback automatico su modalità Demo se non c'è webcam fisica collegata
             self.is_demo = not self.camera_ready
 
+        # Watchdog Callbacks per Auto-Recovery Telecamera USB
+        self.camera.on_connection_lost = self._on_camera_lost
+        self.camera.on_connection_restored = self._on_camera_restored
+
         # Pannello di Controllo GUI Moderno (CustomTkinter)
         self.panel = ControlPanel(
             self.root,
@@ -254,6 +258,9 @@ class SteadyMotionApp:
         self.shared_hud_x: int = 0
         self.shared_hud_y: int = 0
         self.shared_hud_dirty: bool = False
+        self.shared_hud_offset_x: float = 0.0
+        self.shared_hud_offset_y: float = 0.0
+        self.shared_hud_tolerance: float = 24.0
         self.shared_is_fatigued: bool = False
         self.shared_fatigue_reason: str = "Nessuna"
         self.shared_is_copilot: bool = False
@@ -466,6 +473,8 @@ class SteadyMotionApp:
             self.hud.set_theme(str(value))
         elif param_name == "hud_size":
             self.hud.set_size(int(value))
+        elif param_name == "hud_reticle":
+            self.hud.set_reticle_enabled(bool(value))
         elif param_name == "magnetic_snapping_enabled":
             self.magnetic_snapper.update_params(is_enabled=bool(value))
         elif param_name == "magnetic_gravity":
@@ -528,7 +537,19 @@ class SteadyMotionApp:
             self.shared_hud_progress = progress
             self.shared_hud_x = x
             self.shared_hud_y = y
+            self.shared_hud_offset_x = getattr(self.dwell_clicker, "current_offset_x", 0.0)
+            self.shared_hud_offset_y = getattr(self.dwell_clicker, "current_offset_y", 0.0)
+            self.shared_hud_tolerance = getattr(self.dwell_clicker, "tolerance_radius", 24.0)
             self.shared_hud_dirty = True
+
+    def _on_camera_lost(self):
+        """Notifica hardware: perdita segnale video webcam (USB disconnessa o freeze driver)."""
+        self.dwell_clicker.cancel()
+        self.hud.hide()
+
+    def _on_camera_restored(self, camera_index: int, duration_sec: float):
+        """Notifica hardware: ripristino avvenuto con successo su camera_index."""
+        self.clinical_logger.record_camera_dropout(duration_sec)
 
     def _on_acoustic_click(self):
         """Genera un clic immediato all'impulso acustico."""
@@ -891,6 +912,9 @@ class SteadyMotionApp:
             progress = self.shared_hud_progress
             hx = self.shared_hud_x
             hy = self.shared_hud_y
+            h_ox = self.shared_hud_offset_x
+            h_oy = self.shared_hud_offset_y
+            h_tol = self.shared_hud_tolerance
             is_fatigued = self.shared_is_fatigued
             fatigue_reason = self.shared_fatigue_reason
             is_copilot = self.shared_is_copilot
@@ -899,7 +923,7 @@ class SteadyMotionApp:
         if self.is_paused or is_copilot or not self.dwell_clicker.is_enabled:
             self.hud.hide()
         elif hud_dirty:
-            self.hud.show_progress(progress, hx, hy)
+            self.hud.show_progress(progress, hx, hy, offset_x=h_ox, offset_y=h_oy, tolerance_radius=h_tol)
 
         # Aggiornamento telemetria, radar e VU meter su CustomTkinter
         self.panel.update_telemetry(

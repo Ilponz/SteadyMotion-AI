@@ -61,6 +61,11 @@ class DwellClicker:
         self._prev_sample_y: Optional[float] = None
         self._prev_sample_time: Optional[float] = None
 
+        # Offset istantaneo del puntatore rispetto all'ancora di sosta (Feedback Visivo / HUD)
+        self.current_offset_x: float = 0.0
+        self.current_offset_y: float = 0.0
+        self.current_dist: float = 0.0
+
     @property
     def dwell_time(self) -> float:
         return self._dwell_time
@@ -141,6 +146,9 @@ class DwellClicker:
             return 0.0
 
         dist = math.hypot(x - self.anchor_x, y - self.anchor_y)
+        self.current_offset_x = x - self.anchor_x
+        self.current_offset_y = y - self.anchor_y
+        self.current_dist = dist
 
         # 2. Anti-Sweep Velocity Gate: transito rapido tra target (nessun accumulo durante lo sweep)
         if instant_velocity >= self.sweep_velocity_threshold and (self.progress <= 0.05 or dist >= self._grace_radius):
@@ -222,6 +230,9 @@ class DwellClicker:
         last_y = int(self.anchor_y) if self.anchor_y is not None else -1
         self.anchor_x = None
         self.anchor_y = None
+        self.current_offset_x = 0.0
+        self.current_offset_y = 0.0
+        self.current_dist = 0.0
         self.progress = 0.0
         self.has_fired = False
         self.last_update_time = None

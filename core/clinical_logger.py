@@ -74,7 +74,11 @@ class ClinicalSessionLogger:
         self.last_stability_grade: str = "NON_VALUTATA"
         self.adapted_dwell_time: Optional[float] = None
         self.adapted_tolerance_px: Optional[float] = None
-        self.dwell_adaptation_source: Optional[str] = None 
+        self.dwell_adaptation_source: Optional[str] = None
+
+        # Resilienza Hardware & Watchdog Telecamera
+        self.camera_dropouts_count: int = 0
+        self.total_camera_dropout_sec: float = 0.0 
 
     def set_tracking_state(self, is_active: bool, now: Optional[float] = None):
         """Aggiorna lo stato di tracciamento attivo vs standby accumulando i tempi trascorsi."""
@@ -171,6 +175,11 @@ class ClinicalSessionLogger:
         self.adapted_tolerance_px = float(tolerance_radius)
         self.dwell_adaptation_source = str(source)
 
+    def record_camera_dropout(self, duration_s: float = 0.0):
+        """Registra un evento di disconnessione o freeze della webcam gestito dal watchdog."""
+        self.camera_dropouts_count += 1
+        self.total_camera_dropout_sec += max(0.0, float(duration_s))
+
     def record_fitts_assessment(self, fitts_summary: Dict[str, Any]):
         """
         Registra una valutazione standardizzata ISO 9241-9 / Legge di Fitts.
@@ -249,6 +258,11 @@ class ClinicalSessionLogger:
                 "best_effective_throughput_tpe": round(max([a.get("effective_throughput_tpe", 0.0) for a in self.fitts_assessments]), 2) if self.fitts_assessments else 0.0,
                 "mean_overall_throughput_bps": round(sum([a.get("mean_throughput_bps", 0.0) for a in self.fitts_assessments]) / len(self.fitts_assessments), 2) if self.fitts_assessments else 0.0,
             } if self.fitts_assessments else None,
+            "hardware_resilience": {
+                "camera_dropouts_count": self.camera_dropouts_count,
+                "total_camera_dropout_sec": round(self.total_camera_dropout_sec, 2),
+                "watchdog_auto_recovered": self.camera_dropouts_count > 0,
+            },
             "bcea_stability": {
                 "bcea_68_deg2": self.last_bcea_68,
                 "bcea_95_deg2": self.last_bcea_95,
@@ -324,6 +338,7 @@ class ClinicalSessionLogger:
 | **Clic Gesti Facciali Silenziosi** | {m['gesture_clicks']} | FACS blendshapes (mandibola/sorriso) |
 | **Sobbalzi Carrozzina Neutralizzati** | {m.get('wheelchair_jolts_absorbed', 0)} | Filtro sedia a rotelle (dossi/soglie) |
 | **Teletrasporti da Spasmo Frenati** | {m.get('dystonic_teleports_clamped', 0)} | Slew-rate clamp anti-spasmo acuto |
+| **Disconnessioni Webcam Recuperate** | {s.get('hardware_resilience', {}).get('camera_dropouts_count', 0)} ({s.get('hardware_resilience', {}).get('total_camera_dropout_sec', 0.0)} s) | Watchdog auto-recovery USB |
 
 ---
 
