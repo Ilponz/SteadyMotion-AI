@@ -53,6 +53,8 @@ class ClinicalSessionLogger:
         self.wheelchair_jolts_absorbed: int = 0
         self.dystonic_teleports_clamped: int = 0
         self.danger_zone_interceptions: int = 0
+        self.gaze_sleep_events: int = 0
+        self.gaze_wake_events: int = 0
         self.total_cursor_distance_px: float = 0.0
         self._last_cursor_pos: Optional[Tuple[float, float]] = None
 
@@ -141,6 +143,14 @@ class ClinicalSessionLogger:
     def record_danger_zone_interception(self):
         """Registra un evento di protezione da chiusura o azione distruttiva involontaria (Dwell Safety)."""
         self.danger_zone_interceptions += 1
+
+    def record_gaze_sleep(self):
+        """Registra un evento di sospensione autonoma del tracciamento a sguardo (Modalità Sleep)."""
+        self.gaze_sleep_events += 1
+
+    def record_gaze_wake(self):
+        """Registra un evento di risveglio autonomo del puntamento da sguardo sostenuto (Safe Wake Zone)."""
+        self.gaze_wake_events += 1
 
     def record_typing(self, raw_chars: int = 1):
         """Registra caratteri digitati individualmente sulla tastiera."""
@@ -244,6 +254,8 @@ class ClinicalSessionLogger:
                 "wheelchair_jolts_absorbed": self.wheelchair_jolts_absorbed,
                 "dystonic_teleports_clamped": self.dystonic_teleports_clamped,
                 "danger_zone_interceptions": self.danger_zone_interceptions,
+                "gaze_sleep_events": self.gaze_sleep_events,
+                "gaze_wake_events": self.gaze_wake_events,
                 "emergency_calls_count": self.emergency_calls_count,
             },
             "aac_metrics": {
@@ -345,6 +357,8 @@ class ClinicalSessionLogger:
 | **Sobbalzi Carrozzina Neutralizzati** | {m.get('wheelchair_jolts_absorbed', 0)} | Filtro sedia a rotelle (dossi/soglie) |
 | **Teletrasporti da Spasmo Frenati** | {m.get('dystonic_teleports_clamped', 0)} | Slew-rate clamp anti-spasmo acuto |
 | **Chiusure Finestre Prevenute (Dwell Safety)** | {m.get('danger_zone_interceptions', 0)} | Protezione attiva da azioni distruttive |
+| **Sospensioni Autonome Sguardo (Sleep)** | {m.get('gaze_sleep_events', 0)} | Modalità riposo / video gestita dal paziente |
+| **Risvegli Autonomi Sguardo (Safe Wake)** | {m.get('gaze_wake_events', 0)} | Riattivazioni coscienti su Wake Zone |
 | **Disconnessioni Webcam Recuperate** | {s.get('hardware_resilience', {}).get('camera_dropouts_count', 0)} ({s.get('hardware_resilience', {}).get('total_camera_dropout_sec', 0.0)} s) | Watchdog auto-recovery USB |
 
 ---

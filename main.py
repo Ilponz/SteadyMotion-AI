@@ -190,6 +190,7 @@ class SteadyMotionApp:
         )
         wake_cx = int(self.mouse.vx + self.mouse.vw * 0.5)
         self.gaze_sleep.set_wake_target_rect(wake_cx - 60, int(self.mouse.vy + 10), wake_cx + 60, int(self.mouse.vy + 70))
+        self.gaze_sleep.trigger_sleep()
 
         # Telemetria Clinica & Cartella Riabilitativa Digitale (ASL/SSN)
         self.clinical_logger = ClinicalSessionLogger()
@@ -392,7 +393,6 @@ class SteadyMotionApp:
         """Apre o porta in primo piano la tastiera assistiva flottante."""
         if hasattr(self, "_floating_kbd") and self._floating_kbd is not None and self._floating_kbd.winfo_exists():
             self._floating_kbd.lift()
-            self._floating_kbd.focus_force()
             return
         from gui.floating_keyboard import FloatingKeyboardWindow
         self._floating_kbd = FloatingKeyboardWindow(
@@ -419,7 +419,6 @@ class SteadyMotionApp:
         """Apre la mini-barra flottante delle azioni del mouse (Left, Right, Double, Drag, Scroll)."""
         if hasattr(self, "_action_palette") and self._action_palette is not None and self._action_palette.winfo_exists():
             self._action_palette.lift()
-            self._action_palette.focus_force()
             return
         from gui.action_palette import FloatingActionPaletteWindow
         self._action_palette = FloatingActionPaletteWindow(
@@ -429,6 +428,7 @@ class SteadyMotionApp:
             on_toggle_pause=self.toggle_pause,
             on_toggle_keyboard=self.open_floating_keyboard,
             on_close_callback=lambda: setattr(self, "_action_palette", None),
+            audio_feedback=self.audio_feedback,
         )
         self._action_palette.set_pause_state(self.is_paused)
 
@@ -565,13 +565,22 @@ class SteadyMotionApp:
             self.audio_feedback.play("click_left")
 
     def _on_gaze_sleep(self):
+        """Callback invocata all'ingresso in modalità sospensione/dormiveglia."""
         if self.mouse.is_dragging:
             self.mouse.mouse_up("left")
         self.dwell_clicker.cancel()
         self.hud.hide()
+        self.clinical_logger.record_gaze_sleep()
 
     def _on_gaze_wake(self):
-        self.audio_feedback.play("resume")
+        """Callback invocata al completamento della sosta cosciente nella Safe Wake Zone."""
+        if self.is_paused:
+            self.is_paused = False
+            self.clinical_logger.set_tracking_state(True)
+            self.clinical_logger.record_gaze_wake()
+            self.audio_feedback.play("resume")
+            if hasattr(self, "_action_palette") and self._action_palette is not None and self._action_palette.winfo_exists():
+                self._action_palette.set_pause_state(False)
 
     def recenter(self):
         """Calibra la postura neutrale comoda del paziente come centro esatto del desktop."""
@@ -610,8 +619,10 @@ class SteadyMotionApp:
         if self.is_paused:
             self.hud.hide()
             self.audio_feedback.play("pause")
+            self.gaze_sleep.trigger_sleep()
         else:
             self.audio_feedback.play("resume")
+            self.gaze_sleep.trigger_wake()
         if hasattr(self, "_action_palette") and self._action_palette is not None and self._action_palette.winfo_exists():
             self._action_palette.set_pause_state(self.is_paused)
 
@@ -665,8 +676,14 @@ class SteadyMotionApp:
                         self.mouse.vx, self.mouse.vy, self.mouse.vw, self.mouse.vh,
                         monitors=self.mouse.get_display_monitors(),
                     )
-                    wake_cx = int(self.mouse.vx + self.mouse.vw * 0.5)
-                    self.gaze_sleep.set_wake_target_rect(wake_cx - 60, int(self.mouse.vy + 10), wake_cx + 60, int(self.mouse.vy + 70))
+                    if self.mouse.target_monitor_rect:
+                        mx1, my1, mx2, my2 = self.mouse.target_monitor_rect
+                        wake_cx = int((mx1 + mx2) * 0.5)
+                        wake_y = int(my1 + 10)
+                        self.gaze_sleep.set_wake_target_rect(wake_cx - 60, wake_y, wake_cx + 60, wake_y + 60)
+                    else:
+                        wake_cx = int(self.mouse.vx + self.mouse.vw * 0.5)
+                        self.gaze_sleep.set_wake_target_rect(wake_cx - 60, int(self.mouse.vy + 10), wake_cx + 60, int(self.mouse.vy + 70))
                 last_metric_check = t_now
 
             face_detected = False
@@ -743,6 +760,28 @@ class SteadyMotionApp:
                             if is_danger and self.dwell_clicker.progress > 0.05:
                                 self.clinical_logger.record_danger_zone_interception()
                             self.dwell_clicker.update(snap_x, snap_y, t_now)
+                else:
+                    norm_x, norm_y = self.ballistics.compute_normalized_xy(
+                        raw_x, raw_y, self.gain_x_left, self.gain_x_right, self.gain_y_up, self.gain_y_down, now=t_now
+                    )
+                    target_px = self.mouse.vx + norm_x * self.mouse.vw
+                    target_py = self.mouse.vy + norm_y * self.mouse.vh
+                    filt_x, filt_y = self.dsp_filter.filter(target_px, target_py, t_now)
+                    is_sleeping, wake_prog = self.gaze_sleep.update_sleep_state(filt_x, filt_y, t_now)
+                    with self.telemetry_lock:
+                        if wake_prog > 0.0:
+                            wake_cx, wake_cy = self.gaze_sleep.wake_target_center
+                            self.shared_hud_x = wake_cx
+                            self.shared_hud_y = wake_cy
+                            self.shared_hud_progress = wake_prog
+                            self.shared_hud_offset_x = 0.0
+                            self.shared_hud_offset_y = 0.0
+                            self.shared_hud_tolerance = 35.0
+                            self.shared_hud_is_danger = False
+                            self.shared_hud_dirty = True
+                        else:
+                            self.shared_hud_progress = 0.0
+                            self.shared_hud_dirty = True
 
                 with self.telemetry_lock:
                     self.shared_fps = loop_fps
@@ -837,9 +876,11 @@ class SteadyMotionApp:
                     if self.dwell_clicker.progress > 0.0:
                         self.clinical_logger.record_dwell_aborted()
                         self.dwell_clicker.cancel()
+                    if self.gaze_sleep.is_sleeping:
+                        self.gaze_sleep.reset_progress()
 
                 # Iniezione mouse e Clic a sosta eseguiti SOLO se armato (non in pausa)
-                if face_detected and not is_blinking and not self.is_paused:
+                if face_detected and not is_blinking:
                     norm_x, norm_y = self.ballistics.compute_normalized_xy(
                         raw_x, raw_y, self.gain_x_left, self.gain_x_right, self.gain_y_up, self.gain_y_down, now=t_now
                     )
@@ -856,39 +897,61 @@ class SteadyMotionApp:
                             self.clinical_logger.record_dwell_aborted()
                         self.clinical_logger.record_spasm_shock()
                         self.clinical_logger.record_dystonic_teleport_clamped()
-                    snap_x, snap_y = self.magnetic_snapper.apply_snap(clamped_x, clamped_y, t_now)
 
-                    act_x, act_y = self.mouse.get_cursor_pos()
-                    is_overridden = self.copilot.check_override(act_x, act_y, t_now)
-                    if not is_overridden:
-                        self.mouse.move_to_pixel(snap_x, snap_y)
-                        self.copilot.record_injection(snap_x, snap_y)
-                        self.clinical_logger.record_cursor_movement(snap_x, snap_y)
+                    if not self.is_paused:
+                        snap_x, snap_y = self.magnetic_snapper.apply_snap(clamped_x, clamped_y, t_now)
 
-                        # Gestione Scorrimento Continuo ai Bordi (Edge Scrolling)
-                        cur_mon = self.mouse.get_monitor_at(snap_x, snap_y)
-                        mon_top = cur_mon.top if cur_mon else int(self.mouse.vy)
-                        mon_bottom = cur_mon.bottom if cur_mon else int(self.mouse.vy + self.mouse.vh)
+                        act_x, act_y = self.mouse.get_cursor_pos()
+                        is_overridden = self.copilot.check_override(act_x, act_y, t_now)
+                        if not is_overridden:
+                            self.mouse.move_to_pixel(snap_x, snap_y)
+                            self.copilot.record_injection(snap_x, snap_y)
+                            self.clinical_logger.record_cursor_movement(snap_x, snap_y)
 
-                        is_edge_scrolling = self.edge_scrolling.update(
-                            cursor_x=snap_x,
-                            cursor_y=snap_y,
-                            monitor_top=mon_top,
-                            monitor_bottom=mon_bottom,
-                            now=t_now,
-                        )
+                            # Gestione Scorrimento Continuo ai Bordi (Edge Scrolling)
+                            cur_mon = self.mouse.get_monitor_at(snap_x, snap_y)
+                            mon_top = cur_mon.top if cur_mon else int(self.mouse.vy)
+                            mon_bottom = cur_mon.bottom if cur_mon else int(self.mouse.vy + self.mouse.vh)
 
-                        if is_edge_scrolling:
-                            self.dwell_clicker.cancel()
-                            self.hud.hide()
-                        else:
-                            # Valutazione Sicurezza Dwell su Aree Critiche
-                            is_danger, eff_dwell = self.dwell_safety.evaluate_dwell_time(snap_x, snap_y, self._base_dwell_time, now=t_now)
-                            if self.dwell_clicker.dwell_time != eff_dwell:
-                                self.dwell_clicker.dwell_time = eff_dwell
-                            if is_danger and self.dwell_clicker.progress > 0.05:
-                                self.clinical_logger.record_danger_zone_interception()
-                            self.dwell_clicker.update(snap_x, snap_y, t_now)
+                            is_edge_scrolling = self.edge_scrolling.update(
+                                cursor_x=snap_x,
+                                cursor_y=snap_y,
+                                monitor_top=mon_top,
+                                monitor_bottom=mon_bottom,
+                                now=t_now,
+                            )
+
+                            if is_edge_scrolling:
+                                self.dwell_clicker.cancel()
+                                self.hud.hide()
+                            else:
+                                # Valutazione Sicurezza Dwell su Aree Critiche
+                                is_danger, eff_dwell = self.dwell_safety.evaluate_dwell_time(snap_x, snap_y, self._base_dwell_time, now=t_now)
+                                if self.dwell_clicker.dwell_time != eff_dwell:
+                                    self.dwell_clicker.dwell_time = eff_dwell
+                                if is_danger and self.dwell_clicker.progress > 0.05:
+                                    self.clinical_logger.record_danger_zone_interception()
+                                self.dwell_clicker.update(snap_x, snap_y, t_now)
+                    else:
+                        # Modalità SOSPENSIONE / SLEEP: il cursore fisico Windows è congelato,
+                        # ma il tracciamento alimenta la macchina a stati di risveglio autonomo (Safe Wake Zone)
+                        is_sleeping, wake_prog = self.gaze_sleep.update_sleep_state(clamped_x, clamped_y, t_now)
+                        with self.telemetry_lock:
+                            if wake_prog > 0.0:
+                                wake_cx, wake_cy = self.gaze_sleep.wake_target_center
+                                self.shared_hud_x = wake_cx
+                                self.shared_hud_y = wake_cy
+                                self.shared_hud_progress = wake_prog
+                                self.shared_hud_offset_x = 0.0
+                                self.shared_hud_offset_y = 0.0
+                                self.shared_hud_tolerance = 35.0
+                                self.shared_hud_is_danger = False
+                                self.shared_hud_dirty = True
+                            else:
+                                self.shared_hud_progress = 0.0
+                                self.shared_hud_dirty = True
+                            self.shared_hud_progress = 0.0
+                            self.shared_hud_dirty = True
 
             with self.telemetry_lock:
                 self.shared_fps = self.camera.actual_fps if self.camera.actual_fps > 0 else loop_fps
@@ -940,7 +1003,15 @@ class SteadyMotionApp:
             is_copilot = self.shared_is_copilot
             self.shared_hud_dirty = False
 
-        if self.is_paused or is_copilot or not self.dwell_clicker.is_enabled:
+        if is_copilot:
+            self.hud.hide()
+        elif self.is_paused:
+            # Mostra l'HUD solo se il paziente sta fissando la Safe Wake Zone con progresso > 0
+            if progress > 0.01:
+                self.hud.show_progress(progress, hx, hy, offset_x=0.0, offset_y=0.0, tolerance_radius=35.0, is_danger=False)
+            else:
+                self.hud.hide()
+        elif not self.dwell_clicker.is_enabled:
             self.hud.hide()
         elif hud_dirty:
             self.hud.show_progress(progress, hx, hy, offset_x=h_ox, offset_y=h_oy, tolerance_radius=h_tol, is_danger=is_danger)

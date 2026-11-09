@@ -47,7 +47,7 @@ Costruisci una tabella comparativa per ogni modifica proposta:
 
 ## 🔬 STATO DI VERIFICA SUI MICRO-TOPIC (AUDIT SUPERATO AL 100%)
 
-Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **72 su 72 superati al 100%**):
+Tutti i requisiti critici identificati nella vivisezione sono stati implementati, ottimizzati a zero allocazioni heap e validati dalla suite di test scientifica (`test_engine.py` — **74 su 74 superati al 100%**):
 
 ### 1. Video Ingestion (core/camera_worker.py) — [RISOLTO & OTTIMIZZATO]
 - [x] **Zero Heap Churn Ingestion:** cap.read(image=self._raw_capture_buf) riutilizza il frame pre-allocato, azzerando 55 MB/s di allocazioni C++.
@@ -115,6 +115,8 @@ Tutti i requisiti critici identificati nella vivisezione sono stati implementati
 - [x] **Audio Feedback Engine Sinusoidale & Zero-Latency Memory WAV (core/audio_feedback.py):** Pre-sintesi in RAM a startup di tutti i 4 Soundpack clinici in formato RIFF/WAVE PCM 16-bit Mono con inviluppo sinusoidale rialzato Hann Window (3.5 ms), eliminazione totale dei pop/click da onda quadra (winsound.Beep), riproduzione priva di allocazioni heap, TTL guard anti-obsolescenza (scadenza micro-ticks a 50 ms) e preemption istantanea con flush della coda per allarme caregiver d'emergenza.
 - [x] **Dwell Safety Guard Multi-Monitor & Foreground Window Sniffing (core/dwell_safety.py, gui/hud_overlay.py):** Protezione estesa a tutti i monitor fisici e sniffing dinamico Win32 GetForegroundWindow/GetWindowRect a zero-allocazioni (throttled a 100 ms) per proteggere il pulsante 'X' anche di finestre non massimizzate; integrazione HUD con reticolo di sicurezza rosso allerta, icona di avviso e telemetria delle azioni distruttive sventate nella cartella clinica.
 - [x] **Filtro Sobbalzi Carrozzina Vettoriale 2D (core/wheelchair_jolt.py):** Estensione al piano bidimensionale (||a|| > 6.0 norm/s²) con inizializzazione differenziale della velocità a zero falsi positivi; intercettazione e assorbimento urti meccanici laterali (torsioni asta webcam contro stipiti e porte) oltre ai dossi verticali, con rientro esponenziale continuo C^1 e disarmo immediato del dwell.
+- [x] **Focus-Free Action Palette Win32 WS_EX_NOACTIVATE (gui/action_palette.py, main.py):** Applicazione dello stile esteso Win32 `WS_EX_NOACTIVATE (0x08000000)` e rimozione dei furti di focus (`focus_force()`); feedback sonoro dedicato su selezione azioni e scorrimento, e sincronizzazione visuale dello stato di pausa thread-safe.
+- [x] **Integrazione Pipeline Gaze Sleep & Safe Wake Zone a Sguardo Autonomo (core/gaze_sleep.py, main.py, gui/hud_overlay.py, core/clinical_logger.py):** Risveglio autonomo del paziente tetraplegico/SLA dalla modalità riposo/pausa tramite sosta cosciente sostenuta (1.5-1.8s) sulla Safe Wake Zone a coordinate dinamiche multi-monitor; tracciamento cefalico attivo in background a puntatore congelato, bio-feedback visivo circolare HUD di avanzamento sblocco, reset istantaneo a zero in caso di ammiccamento/sonno, decadimento rapido su distrazione ed emissione automatica del carillon `resume` al ripristino del controllo, con telemetria clinica integrata (`gaze_sleep_events`, `gaze_wake_events`).
 
 ---
 

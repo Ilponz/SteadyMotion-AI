@@ -45,6 +45,22 @@ class GazeSleepController:
         # Coordinate della Wake-Up Target Zone a schermo (default: centro-alto dello schermo)
         self.wake_target_rect: Tuple[int, int, int, int] = (900, 10, 1020, 70)
 
+    @property
+    def wake_progress(self) -> float:
+        return self._wake_progress
+
+    @property
+    def wake_target_center(self) -> Tuple[int, int]:
+        x1, y1, x2, y2 = self.wake_target_rect
+        return (int((x1 + x2) * 0.5), int((y1 + y2) * 0.5))
+
+    def set_wake_dwell_time(self, seconds: float):
+        self.wake_dwell_time = max(0.5, float(seconds))
+
+    def reset_progress(self):
+        self._wake_progress = 0.0
+        self._last_t = 0.0
+
     def set_wake_target_rect(self, x1: int, y1: int, x2: int, y2: int):
         """Imposta l'area a schermo dedicata al risveglio."""
         self.wake_target_rect = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
@@ -53,6 +69,7 @@ class GazeSleepController:
         """Mette immediatamente il sistema in stato di sleep autonomo."""
         self.is_sleeping = True
         self._wake_progress = 0.0
+        self._last_t = 0.0
         if self.on_sleep_callback:
             try:
                 self.on_sleep_callback()
@@ -63,6 +80,7 @@ class GazeSleepController:
         """Risveglia immediatamente il sistema ripristinando il controllo."""
         self.is_sleeping = False
         self._wake_progress = 0.0
+        self._last_t = 0.0
         if self.on_wake_callback:
             try:
                 self.on_wake_callback()

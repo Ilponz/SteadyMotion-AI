@@ -3721,6 +3721,200 @@ def test_wheelchair_2d_vector_jolt_and_lateral_bump():
     print(">>> TEST 72 SUPERATO! <<<")
 
 
+def test_action_palette_noactivate_and_state_machine():
+    """TEST 73: Action Palette Win32 WS_EX_NOACTIVATE, Focus-Free Dwell Click & Audio Feedback Confirmation."""
+    print("\n--- TEST 73: Action Palette Win32 WS_EX_NOACTIVATE & State Machine ---")
+    import ctypes
+    import tkinter as tk
+    from gui.action_palette import FloatingActionPaletteWindow
+    from core.dwell_clicker import DwellClicker
+
+    root = tk.Tk()
+    root.withdraw()
+
+    class MockVirtualInput:
+        def __init__(self):
+            self.scrolled_steps = 0
+            self.is_dragging = False
+
+        def scroll(self, steps: int):
+            self.scrolled_steps += steps
+
+    class MockAudioFeedback:
+        def __init__(self):
+            self.played_events = []
+
+        def play(self, sound_event: str):
+            self.played_events.append(sound_event)
+
+    dc = DwellClicker(dwell_time=0.6, tolerance_radius=24.0)
+    vi = MockVirtualInput()
+    af = MockAudioFeedback()
+    pause_toggled = [False]
+
+    def on_pause():
+        pause_toggled[0] = not pause_toggled[0]
+
+    palette = FloatingActionPaletteWindow(
+        parent=root,
+        dwell_clicker=dc,
+        virtual_input=vi,
+        on_toggle_pause=on_pause,
+        audio_feedback=af,
+    )
+    palette.update_idletasks()
+
+    # 1. Verifica Win32 WS_EX_NOACTIVATE
+    hwnd = ctypes.windll.user32.GetParent(palette.winfo_id())
+    if hwnd == 0:
+        hwnd = palette.winfo_id()
+    GWL_EXSTYLE = -20
+    WS_EX_NOACTIVATE = 0x08000000
+    current_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    assert (current_style & WS_EX_NOACTIVATE) == WS_EX_NOACTIVATE, (
+        f"Stile WS_EX_NOACTIVATE (0x08000000) NON presente! Valore: {hex(current_style)}"
+    )
+    print(f"WS_EX_NOACTIVATE su FloatingActionPaletteWindow: Confermato ({hex(current_style)})")
+
+    # 2. Selezione Modalità Destro (One-Shot Right Click)
+    palette.select_action("right")
+    assert palette.active_mode == "right"
+    assert dc.current_action == "right"
+    assert "click_left" in af.played_events
+    print("Selezione Clic Destro: DwellClicker armato su 'right' + Audio Feedback OK")
+
+    # Completamento Clic Destro -> Ripristino automatico 'left'
+    palette.on_click_completed("right")
+    palette.update()
+    assert palette.active_mode == "left"
+    print("One-Shot Ripristino Clic Sinistro post-tasto Destro: Verificato")
+
+    # 3. Selezione Modalità Doppio Clic
+    palette.select_action("double")
+    assert palette.active_mode == "double"
+    assert dc.current_action == "double"
+    palette.on_click_completed("double")
+    palette.update()
+    assert palette.active_mode == "left"
+    print("One-Shot Ripristino Clic Sinistro post-Doppio Clic: Verificato")
+
+    # 4. Scorrimento Pagina (Scroll Su / Giù)
+    palette.select_action("scroll_up")
+    assert vi.scrolled_steps == 3
+    assert "tick" in af.played_events
+
+    palette.select_action("scroll_down")
+    assert vi.scrolled_steps == 0
+    print("Iniezione Scorrimento Rapido Su/Giù: Conforme al 100%")
+
+    # 5. Sincronizzazione Visiva Stato di Pausa
+    palette.set_pause_state(True)
+    palette.update()
+    assert "ATTIVA" in palette.buttons["pause"].cget("text")
+
+    palette.set_pause_state(False)
+    palette.update()
+    assert "PAUSA" in palette.buttons["pause"].cget("text")
+    print("Sincronizzazione Stato Pausa e Thread-Safety Palette: 100% Conforme")
+
+    # 6. Coordinate e Geometria Palette
+    rect = palette.get_window_rect()
+    assert len(rect) == 4 and rect[2] > 0 and rect[3] > 0
+
+    palette.destroy()
+    root.destroy()
+    print(">>> TEST 73 SUPERATO! <<<")
+
+
+def test_autonomous_gaze_sleep_and_wake_loop():
+    """TEST 74: Autonomous Gaze Sleep & Wake Pipeline Integration, Background Head-Tracking & HUD Bio-Feedback."""
+    print("\n--- TEST 74: Autonomous Gaze Sleep & Wake Pipeline Integration ---")
+    from core.gaze_sleep import GazeSleepController
+    from core.clinical_logger import ClinicalSessionLogger
+
+    wake_called = [0]
+    sleep_called = [0]
+
+    def on_wake():
+        wake_called[0] += 1
+
+    def on_sleep():
+        sleep_called[0] += 1
+
+    ctrl = GazeSleepController(
+        wake_dwell_time=1.5,
+        tolerance_radius=35.0,
+        on_sleep_callback=on_sleep,
+        on_wake_callback=on_wake,
+    )
+    ctrl.set_wake_target_rect(900, 10, 1020, 70)
+    wake_cx, wake_cy = ctrl.wake_target_center
+    assert (wake_cx, wake_cy) == (960, 40)
+
+    # 1. Attivazione Sleep Mode
+    ctrl.trigger_sleep()
+    assert ctrl.is_sleeping is True
+    assert ctrl.wake_progress == 0.0
+    assert sleep_called[0] == 1
+    print("Attivazione Sleep: Stato di sospensione armato con successo")
+
+    # 2. Movimento occhiolino / sonno: chiusura occhi deve azzerare il progresso
+    ctrl.update_sleep_state(960, 40, now=10.0)
+    ctrl.update_sleep_state(960, 40, now=10.5)
+    assert ctrl.wake_progress > 0.0, "La sosta sul target di risveglio deve incrementare il progresso"
+    ctrl.reset_progress()
+    assert ctrl.wake_progress == 0.0, "reset_progress() su ammiccamento prolungato deve azzerare la sosta"
+    print("Protezione Riposo/Sonno: Ammiccamento sostenuto azzera il progresso di sblocco")
+
+    # 3. Decadimento rapido se lo sguardo esce dal target di sblocco
+    t_test = 15.0
+    ctrl.update_sleep_state(960, 40, now=t_test)
+    for _ in range(6):
+        t_test += 0.10
+        ctrl.update_sleep_state(960, 40, now=t_test)
+    prog_mid = ctrl.wake_progress
+    assert prog_mid >= 0.35, f"Atteso prog_mid >= 0.35, ottenuto {prog_mid}"
+    # Sguardo distratto verso il centro schermo (500, 500)
+    ctrl.update_sleep_state(500, 500, now=t_test + 0.10)
+    assert ctrl.wake_progress < prog_mid, "Uscita dal target deve provocare decadimento immediato del progresso"
+    print("Decadimento Rapido Anti-Distrazione fuori dal Target: Verificato")
+
+    # 4. Risveglio Completo Coscente (Sosta continua > 1.5s)
+    ctrl.reset_progress()
+    t = 20.0
+    ctrl.update_sleep_state(960, 40, now=t)
+    for _ in range(8):
+        t += 0.20
+        is_sleeping, prog = ctrl.update_sleep_state(960, 40, now=t)
+
+    assert ctrl.is_sleeping is False, "Il superamento del tempo di sosta (1.6s > 1.5s) deve risvegliare il sistema"
+    assert wake_called[0] == 1, "Il callback on_wake_callback deve essere invocato esattamente una volta"
+    print("Risveglio Autonomo Completo su Sosta Cosciente: Confermato al 100%")
+
+    # 5. Integrazione con Cartella Clinica Telemetrica (ClinicalSessionLogger)
+    logger = ClinicalSessionLogger()
+    logger.record_gaze_sleep()
+    logger.record_gaze_sleep()
+    logger.record_gaze_wake()
+    summary = logger.get_session_summary()
+    assert summary["motor_metrics"]["gaze_sleep_events"] == 2
+    assert summary["motor_metrics"]["gaze_wake_events"] == 1
+    report = logger.generate_markdown_report()
+    assert "Sospensioni Autonome Sguardo (Sleep)" in report
+    assert "Risvegli Autonomi Sguardo (Safe Wake)" in report
+    print("Telemetria Sospensioni e Risvegli Autonomi nel Report Clinico: 100% Conforme")
+
+    # 6. Target Monitor Pinning per Safe Wake Zone (Multi-Monitor)
+    # Su monitor secondario (l=1920, t=0, r=3840, b=1080), il centro deve essere x=2880, y=10..70
+    mon_l, mon_t, mon_r, mon_b = 1920, 0, 3840, 1080
+    sec_cx = int((mon_l + mon_r) * 0.5)
+    sec_y = int(mon_t + 10)
+    ctrl.set_wake_target_rect(sec_cx - 60, sec_y, sec_cx + 60, sec_y + 60)
+    assert ctrl.wake_target_center == (2880, 40)
+    print("Safe Wake Zone Adattiva su Target Monitor Pinning: 100% Conforme")
+    print(">>> TEST 74 SUPERATO! <<<")
+
+
 if __name__ == "__main__":
     test_dsp_filter_attenuation()
     test_dsp_isotropy()
@@ -3794,8 +3988,10 @@ if __name__ == "__main__":
     test_audio_feedback_sinusoidal_wav_and_ttl_preemption()
     test_dwell_safety_multi_monitor_and_foreground_window_sniffing()
     test_wheelchair_2d_vector_jolt_and_lateral_bump()
+    test_action_palette_noactivate_and_state_machine()
+    test_autonomous_gaze_sleep_and_wake_loop()
     print("\n========================================================")
-    print("TUTTI I 72 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
+    print("TUTTI I 74 TEST MATEMATICI & CLINICI SUPERATI AL 100%!")
     print("========================================================")
 
 

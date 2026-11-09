@@ -14,8 +14,9 @@ di controllare autonomamente al 100% l'ambiente desktop Windows senza bisogno di
 3. Feedback Visivo LED: il pulsante attivo si illumina con colore ad alto contrasto.
 """
 
+import ctypes
 import tkinter as tk
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 import customtkinter as ctk
 
 
@@ -30,6 +31,7 @@ class FloatingActionPaletteWindow(ctk.CTkToplevel):
         on_toggle_pause: Optional[Callable[[], None]] = None,
         on_toggle_keyboard: Optional[Callable[[], None]] = None,
         on_close_callback: Optional[Callable[[], None]] = None,
+        audio_feedback: Optional[Any] = None,
     ):
         super().__init__(parent)
         self.dwell_clicker = dwell_clicker
@@ -37,6 +39,7 @@ class FloatingActionPaletteWindow(ctk.CTkToplevel):
         self.on_toggle_pause = on_toggle_pause
         self.on_toggle_keyboard = on_toggle_keyboard
         self.on_close_callback = on_close_callback
+        self.audio_feedback = audio_feedback
 
         self.title("Azioni Mouse — SteadyMotion AI")
         # Posiziona la barra verticale sul bordo sinistro dello schermo
@@ -50,7 +53,35 @@ class FloatingActionPaletteWindow(ctk.CTkToplevel):
         self.buttons: Dict[str, ctk.CTkButton] = {}
 
         self._build_ui()
+        self._apply_noactivate_style()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _apply_noactivate_style(self):
+        """
+        Applica lo stile Win32 WS_EX_NOACTIVATE alla finestra della palette azioni.
+        Impedisce categoricamente a Windows di sottrarre il focus all'applicazione attiva
+        (Notepad, Word, Browser, Chat) quando l'utente seleziona una modalità o esegue
+        il Dwell sui pulsanti della barra.
+        """
+        try:
+            self.update_idletasks()
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            if hwnd == 0:
+                hwnd = self.winfo_id()
+            GWL_EXSTYLE = -20
+            WS_EX_NOACTIVATE = 0x08000000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE)
+        except Exception:
+            pass
+
+    def get_window_rect(self) -> Tuple[int, int, int, int]:
+        """Restituisce le coordinate assolute (x, y, w, h) della palette."""
+        try:
+            self.update_idletasks()
+            return (self.winfo_rootx(), self.winfo_rooty(), self.winfo_width(), self.winfo_height())
+        except Exception:
+            return (20, 200, 90, 440)
 
     def _build_ui(self):
         # Impugnatura per trascinamento
@@ -96,6 +127,11 @@ class FloatingActionPaletteWindow(ctk.CTkToplevel):
     def select_action(self, action: str):
         """Gestisce il clic/dwell su un'azione della palette."""
         if action == "scroll_up":
+            if self.audio_feedback:
+                try:
+                    self.audio_feedback.play("tick")
+                except Exception:
+                    pass
             if self.virtual_input:
                 try:
                     self.virtual_input.scroll(3)
@@ -103,6 +139,11 @@ class FloatingActionPaletteWindow(ctk.CTkToplevel):
                     pass
             return
         elif action == "scroll_down":
+            if self.audio_feedback:
+                try:
+                    self.audio_feedback.play("tick")
+                except Exception:
+                    pass
             if self.virtual_input:
                 try:
                     self.virtual_input.scroll(-3)
@@ -110,6 +151,11 @@ class FloatingActionPaletteWindow(ctk.CTkToplevel):
                     pass
             return
         elif action == "keyboard":
+            if self.audio_feedback:
+                try:
+                    self.audio_feedback.play("click_left")
+                except Exception:
+                    pass
             if self.on_toggle_keyboard:
                 self.on_toggle_keyboard()
             return
@@ -119,6 +165,11 @@ class FloatingActionPaletteWindow(ctk.CTkToplevel):
             return
 
         # Modalità mouse per dwell clicker: left, right, double, drag
+        if self.audio_feedback:
+            try:
+                self.audio_feedback.play("click_left")
+            except Exception:
+                pass
         self.active_mode = action
         if self.dwell_clicker:
             self.dwell_clicker.set_action(action)
@@ -137,42 +188,55 @@ class FloatingActionPaletteWindow(ctk.CTkToplevel):
             self._update_button_styles()
 
     def set_pause_state(self, is_paused: bool):
-        """Sincronizza lo stato visivo di pausa con l'app centrale."""
+        """Sincronizza lo stato visivo di pausa con l'app centrale (thread-safe)."""
         self.is_paused = is_paused
-        if "pause" in self.buttons:
-            if is_paused:
-                self.buttons["pause"].configure(
-                    text="▶\nATTIVA",
-                    fg_color="#10B981",
-                    hover_color="#059669",
-                    border_color="#34D399",
-                )
-            else:
-                self.buttons["pause"].configure(
-                    text="⏸\nPAUSA",
-                    fg_color="#1E293B",
-                    hover_color="#E11D48",
-                    border_color="#334155",
-                )
+
+        def _apply():
+            if "pause" in self.buttons and self.buttons["pause"].winfo_exists():
+                if is_paused:
+                    self.buttons["pause"].configure(
+                        text="▶\nATTIVA",
+                        fg_color="#10B981",
+                        hover_color="#059669",
+                        border_color="#34D399",
+                    )
+                else:
+                    self.buttons["pause"].configure(
+                        text="⏸\nPAUSA",
+                        fg_color="#1E293B",
+                        hover_color="#E11D48",
+                        border_color="#334155",
+                    )
+
+        try:
+            self.after(0, _apply)
+        except Exception:
+            _apply()
 
     def _update_button_styles(self):
-        """Aggiorna i colori e bordi evidenziando la modalità attiva."""
-        colors = {
-            "left": "#10B981",
-            "right": "#F59E0B",
-            "double": "#38BDF8",
-            "drag": "#EF4444",
-        }
+        """Aggiorna i colori e bordi evidenziando la modalità attiva (thread-safe)."""
+        def _apply():
+            colors = {
+                "left": "#10B981",
+                "right": "#F59E0B",
+                "double": "#38BDF8",
+                "drag": "#EF4444",
+            }
 
-        for act_id in ("left", "right", "double", "drag"):
-            if act_id not in self.buttons:
-                continue
-            btn = self.buttons[act_id]
-            if act_id == self.active_mode:
-                col = colors.get(act_id, "#38BDF8")
-                btn.configure(fg_color=col, border_color="#FFFFFF", border_width=2)
-            else:
-                btn.configure(fg_color="#1E293B", border_color="#334155", border_width=1)
+            for act_id in ("left", "right", "double", "drag"):
+                if act_id not in self.buttons or not self.buttons[act_id].winfo_exists():
+                    continue
+                btn = self.buttons[act_id]
+                if act_id == self.active_mode:
+                    col = colors.get(act_id, "#38BDF8")
+                    btn.configure(fg_color=col, border_color="#FFFFFF", border_width=2)
+                else:
+                    btn.configure(fg_color="#1E293B", border_color="#334155", border_width=1)
+
+        try:
+            self.after(0, _apply)
+        except Exception:
+            _apply()
 
     def _on_close(self):
         if self.on_close_callback:
